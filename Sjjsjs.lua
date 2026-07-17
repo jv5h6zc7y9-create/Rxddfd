@@ -1,7 +1,7 @@
 --[[
     ================================================================================
-    👑 BROSA SYSTEM v5.2 — PRIVATE UNLIMITED MONOLITHIC HYBRID SCRIPT HUB
-    🎨 CORE GUI INTERFACE: AURORA MENU v2 (FULLY EXPANDED EDITION)
+    👑 BROSA SYSTEM v6.0 — PRIVATE UNLIMITED MONOLITHIC HYBRID SCRIPT HUB
+    🎨 CORE GUI INTERFACE: AURORA MENU v2.5 (FULLY EXPANDED EDITION)
     🔒 STATUS: UNDETECTED | BYPASS: ACTIVE | OPTIMIZED FOR DELTA/HYDROGEN/FLUXUS
     ================================================================================
 ]]
@@ -27,12 +27,14 @@ local TeleportService = game:GetService("TeleportService")
 local TextChatService = game:GetService("TextChatService")
 local StarterGui = game:GetService("StarterGui")
 local Stats = game:GetService("Stats")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local lp = Players.LocalPlayer
 if not lp.Character then 
     lp.CharacterAdded:Wait() 
 end
 local camera = workspace.CurrentCamera
+local mouse = lp:GetMouse()
 
 -- Защита от повторного запуска (Анти-дабл)
 if _G.BrosaHubGlobal and _G.BrosaHubGlobal.Loaded then
@@ -68,14 +70,20 @@ _G.BrosaHubGlobal = {
         MassWeld = false,
         LobbyFreeze = false,
         
-        -- Визуалы & ESP
+        -- Визуалы & ESP (Старые + Новые)
         ESP_Players = false,
         ESP_Tracers = false,
         ESP_Boxes = false,
+        ESP_3DBoxes = false,
         ESP_Names = false,
         ESP_Health = false,
         Fullbright = false,
         PotatoPC = false,
+        SkyboxType = "Default",
+        AspectRatioEnabled = false,
+        AspectRatioValue = 1,
+        ThirdPerson = false,
+        ThirdPersonZoom = 15,
         
         -- Защита & Обходы
         BypassMetatable = true,
@@ -83,8 +91,22 @@ _G.BrosaHubGlobal = {
         AntiFling = false,
         AntiReport = false,
         ChatSpam = false,
-        ChatSpamMessage = "Brosa System v5.2 on Top!",
-        AutoFarm = false
+        ChatSpamMessage = "Brosa System v6.0 on Top!",
+        AutoFarm = false,
+
+        -- FTAP Эксклюзив (Новые)
+        InstaGrab = false,
+        SilentAim = false,
+        SilentAimFOV = 100,
+        Hitboxes = false,
+        HitboxSize = 5,
+        HitboxColorRGB = "0,180,255",
+        HitboxImageID = "",
+        UnderMapPush = false,
+        AutoCounterGrab = false,
+        AntiRagdoll = false,
+        AnchorPallet = false,
+        Whitelist = {}
     },
     Cache = {
         OriginalLighting = {
@@ -97,10 +119,15 @@ _G.BrosaHubGlobal = {
         },
         Connections = {},
         EspBoxes = {},
+        Esp3DBoxes = {},
         EspTracers = {},
         EspNames = {},
         EspHealth = {},
-        OriginalMaterials = {}
+        OriginalMaterials = {},
+        HitboxParts = {},
+        CustomSky = nil,
+        PalletPart = nil,
+        FovCircle = nil
     }
 }
 
@@ -117,7 +144,11 @@ end
 -- [2. СЛОЖНЫЙ МАТЕМАТИЧЕСКИЙ И ФИЗИЧЕСКИЙ ДВИЖОК ЭКСПЛУАТОВ]
 -- ============================================================================
 
--- Вспомогательная функция поиска игрока по части имени
+local function IsWhitelisted(player)
+    if not player then return false end
+    return Hub.Flags.Whitelist[player.Name] == true
+end
+
 local function FindPlayerByName(name)
     if not name or name == "" then return nil end
     name = name:lower()
@@ -129,12 +160,37 @@ local function FindPlayerByName(name)
     return nil
 end
 
+-- Вспомогательная функция для эмуляции нажатия GUI кнопок FTAP (Instant Grab/Throw)
+local function EmulateFTAPButton(action)
+    -- Пытаемся найти оригинальные кнопки в PlayerGui
+    local gui = lp:WaitForChild("PlayerGui", 3)
+    if not gui then return end
+
+    -- Эмуляция клика в центр экрана для захвата на ПК (либо использование VirtualInputManager)
+    if action == "Grab" then
+        VirtualInputManager:SendMouseButtonEvent(camera.ViewportSize.X/2, camera.ViewportSize.Y/2, 0, true, game, 1)
+        task.wait()
+        VirtualInputManager:SendMouseButtonEvent(camera.ViewportSize.X/2, camera.ViewportSize.Y/2, 0, false, game, 1)
+    elseif action == "Throw" then
+        VirtualInputManager:SendMouseButtonEvent(camera.ViewportSize.X/2, camera.ViewportSize.Y/2, 1, true, game, 1)
+        task.wait()
+        VirtualInputManager:SendMouseButtonEvent(camera.ViewportSize.X/2, camera.ViewportSize.Y/2, 1, false, game, 1)
+    elseif action == "PushDown" then
+        -- Эмуляция кнопки "Отдалить" и направление вектора вниз
+        local oldCamCFrame = camera.CFrame
+        camera.CFrame = CFrame.new(camera.CFrame.Position, camera.CFrame.Position + Vector3.new(0, -1, 0))
+        -- Эмулируем скролл вниз или кнопку отдаления
+        VirtualInputManager:SendMouseWheelEvent(0, 0, false, game)
+        task.wait(0.05)
+        camera.CFrame = oldCamCFrame
+    end
+end
+
 -- Логика Noclip и Anti-Grab
 SafeConnect(RunService.Stepped, function()
     local char = lp.Character
     if not char then return end
     
-    -- Noclip (Проход сквозь стены)
     if Hub.Flags.Noclip then
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
@@ -143,7 +199,6 @@ SafeConnect(RunService.Stepped, function()
         end
     end
     
-    -- Anti-Grab (Защита от удержания/переноса другими игроками)
     if Hub.Flags.AntiGrab then
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
@@ -153,14 +208,72 @@ SafeConnect(RunService.Stepped, function()
     end
 end)
 
--- Логика Anti-Fling (Фиксация угловой скорости для стабильности)
+-- Логика Anti-Fling и FTAP Anti-Ragdoll / Auto-Counter
 SafeConnect(RunService.Heartbeat, function()
     local char = lp.Character
-    if Hub.Flags.AntiFling and char then
+    if char then
         local root = char:FindFirstChild("HumanoidRootPart")
-        if root then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        
+        -- Anti-Fling
+        if Hub.Flags.AntiFling and root then
             root.RotVelocity = Vector3.new(0, 0, 0)
             root.Velocity = Vector3.new(root.Velocity.X, math.clamp(root.Velocity.Y, -80, 80), root.Velocity.Z)
+        end
+
+        -- Anti-Ragdoll (FTAP Jelly state)
+        if Hub.Flags.AntiRagdoll and hum then
+            if hum:GetState() == Enum.HumanoidStateType.Physics or hum:GetState() == Enum.HumanoidStateType.Ragdoll or hum:GetState() == Enum.HumanoidStateType.FallingDown then
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                hum.Jump = true
+            end
+        end
+
+        -- Поддон (Anchor Pallet)
+        if Hub.Flags.AnchorPallet and root then
+            if not Hub.Cache.PalletPart then
+                local pallet = Instance.new("Part")
+                pallet.Size = Vector3.new(5, 1, 5)
+                pallet.Transparency = 1
+                pallet.Color = Color3.fromRGB(139, 69, 19)
+                pallet.CanCollide = false
+                pallet.Anchored = true
+                pallet.Parent = workspace
+                Hub.Cache.PalletPart = pallet
+            end
+            Hub.Cache.PalletPart.CFrame = root.CFrame * CFrame.new(0, -2, 0)
+            root.Velocity = Vector3.new(0,0,0)
+            root.CFrame = CFrame.new(root.Position)
+        else
+            if Hub.Cache.PalletPart then
+                Hub.Cache.PalletPart:Destroy()
+                Hub.Cache.PalletPart = nil
+            end
+        end
+    end
+end)
+
+-- Авто-перехват (Auto-Counter Grab)
+SafeConnect(workspace.DescendantAdded, function(descendant)
+    if Hub.Flags.AutoCounterGrab and descendant:IsA("Weld") or descendant:IsA("WeldConstraint") then
+        local char = lp.Character
+        if char and (descendant.Part0 and descendant.Part0:IsDescendantOf(char) or descendant.Part1 and descendant.Part1:IsDescendantOf(char)) then
+            -- Нас схватили. Находим кто
+            local attackerChar = descendant:FindFirstAncestorOfClass("Model")
+            if attackerChar and attackerChar ~= char then
+                local attackerPlayer = Players:GetPlayerFromCharacter(attackerChar)
+                if attackerPlayer and not IsWhitelisted(attackerPlayer) then
+                    -- Мгновенно смотрим на него и эмулируем перехват
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                    local aRoot = attackerChar:FindFirstChild("HumanoidRootPart")
+                    if root and aRoot then
+                        root.CFrame = CFrame.lookAt(root.Position, Vector3.new(aRoot.Position.X, root.Position.Y, aRoot.Position.Z))
+                        EmulateFTAPButton("Grab")
+                        task.wait(0.1)
+                        EmulateFTAPButton("Throw")
+                    end
+                end
+            end
         end
     end
 end)
@@ -203,9 +316,9 @@ SafeConnect(UserInputService.JumpRequest, function()
     end
 end)
 
--- Усовершенствованный Fling Движок (Высокоскоростной таран физики)
+-- Усовершенствованный Fling Движок
 local function ExecuteFling(target)
-    if not target or target == lp then return end
+    if not target or target == lp or IsWhitelisted(target) then return end
     local char = lp.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local tchar = target.Character
@@ -215,7 +328,6 @@ local function ExecuteFling(target)
         local oldCFrame = root.CFrame
         local flingActive = true
         
-        -- Временный Noclip для флинга
         local tempNoclip = RunService.Stepped:Connect(function()
             if char then
                 for _, part in ipairs(char:GetDescendants()) do
@@ -224,12 +336,10 @@ local function ExecuteFling(target)
             end
         end)
         
-        -- Силовой контур флинга
         local flingLoop = RunService.Heartbeat:Connect(function()
             if not tchar or not troot or not troot.Parent or not flingActive then
                 return
             end
-            -- Экстремальная угловая и линейная скорость
             root.Velocity = Vector3.new(0, 150000, 0)
             root.RotVelocity = Vector3.new(150000, 150000, 150000)
             root.CFrame = troot.CFrame * CFrame.new(math.random(-2, 2)/10, 0, math.random(-2, 2)/10)
@@ -249,14 +359,13 @@ local function ExecuteFling(target)
     end
 end
 
--- Fling Aura (Уничтожение всех, кто подходит слишком близко)
 SafeConnect(RunService.Heartbeat, function()
     if Hub.Flags.FlingAura then
         local char = lp.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if root then
             for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                if player ~= lp and not IsWhitelisted(player) and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                     local targetRoot = player.Character.HumanoidRootPart
                     local dist = (root.Position - targetRoot.Position).Magnitude
                     if dist <= 15 then
@@ -268,7 +377,6 @@ SafeConnect(RunService.Heartbeat, function()
     end
 end)
 
--- Click Fling (Флинг кликом мыши с зажатым Ctrl)
 SafeConnect(UserInputService.InputBegan, function(input, processed)
     if not processed and Hub.Flags.ClickFling and input.UserInputType == Enum.UserInputType.MouseButton1 then
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
@@ -283,7 +391,7 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
                 local model = result.Instance:FindFirstAncestorOfClass("Model")
                 if model then
                     local clickedPlayer = Players:GetPlayerFromCharacter(model)
-                    if clickedPlayer and clickedPlayer ~= lp then
+                    if clickedPlayer and clickedPlayer ~= lp and not IsWhitelisted(clickedPlayer) then
                         ExecuteFling(clickedPlayer)
                     end
                 end
@@ -292,11 +400,11 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
     end
 end)
 
--- Orbit Движок (Кружение вокруг цели)
 local orbitAngle = 0
 SafeConnect(RunService.Heartbeat, function()
     if Hub.Flags.OrbitPlayer and Hub.Flags.TargetPlayer ~= "" then
         local target = FindPlayerByName(Hub.Flags.TargetPlayer)
+        if target and IsWhitelisted(target) then return end
         local char = lp.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         local tchar = target and target.Character
@@ -315,7 +423,6 @@ SafeConnect(RunService.Heartbeat, function()
     end
 end)
 
--- Mass Weld (Сварка и забивание физики сервера)
 local function RunMassWeld()
     local char = lp.Character
     if not char then return end
@@ -332,7 +439,6 @@ local function RunMassWeld()
     end
 end
 
--- Lobby Freeze (Попытка лагнуть физику сервера пакетами позиционирования)
 SafeConnect(RunService.Heartbeat, function()
     if Hub.Flags.LobbyFreeze then
         local char = lp.Character
@@ -346,7 +452,6 @@ SafeConnect(RunService.Heartbeat, function()
     end
 end)
 
--- Chat Spammer Loop
 task.spawn(function()
     while task.wait(3) do
         if Hub.Flags.ChatSpam and Hub.Loaded then
@@ -366,6 +471,140 @@ end)
 -- [3. ПОЛНАЯ РЕАЛИЗАЦИЯ И РЕНДЕРИНГ ESP И ВИЗУАЛОВ]
 -- ============================================================================
 
+local function GetRGBFromString(str)
+    local r, g, b = str:match("(%d+)[%D]+(%d+)[%D]+(%d+)")
+    if r and g and b then
+        return Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b))
+    end
+    return Color3.fromRGB(0, 180, 255)
+end
+
+-- Инициализация круга Silent Aim
+local fovCircle = Drawing.new("Circle")
+fovCircle.Visible = false
+fovCircle.Thickness = 1
+fovCircle.Color = Color3.fromRGB(255, 255, 255)
+fovCircle.Filled = false
+fovCircle.Transparency = 0.5
+Hub.Cache.FovCircle = fovCircle
+
+SafeConnect(RunService.RenderStepped, function()
+    if Hub.Flags.SilentAim then
+        fovCircle.Visible = true
+        fovCircle.Radius = Hub.Flags.SilentAimFOV
+        fovCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    else
+        fovCircle.Visible = false
+    end
+end)
+
+local function GetClosestToCenter()
+    local closestDist = Hub.Flags.SilentAimFOV
+    local closestTarget = nil
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not IsWhitelisted(p) then
+            local pos, onScreen = camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
+            if onScreen then
+                local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closestTarget = p.Character.HumanoidRootPart
+                end
+            end
+        end
+    end
+    return closestTarget
+end
+
+-- Обработка Silent Aim & InstaGrab кликов
+SafeConnect(UserInputService.InputBegan, function(input, processed)
+    if not processed and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if Hub.Flags.InstaGrab or Hub.Flags.SilentAim then
+            local target = GetClosestToCenter()
+            if target then
+                -- Принудительно направляем камеру/мышь или спамим эмуляцию
+                local oldCFrame = camera.CFrame
+                camera.CFrame = CFrame.lookAt(camera.CFrame.Position, target.Position)
+                EmulateFTAPButton("Grab")
+                if Hub.Flags.UnderMapPush then
+                    task.wait(0.05)
+                    EmulateFTAPButton("PushDown")
+                end
+            end
+        end
+    end
+end)
+
+-- 3D ESP Отрисовка
+local function Draw3DBox(player)
+    local lines = {}
+    for i = 1, 12 do
+        local line = Drawing.new("Line")
+        line.Visible = false
+        line.Color = Color3.fromRGB(0, 255, 130)
+        line.Thickness = 1.5
+        table.insert(lines, line)
+    end
+    Hub.Cache.Esp3DBoxes[player.UserId] = lines
+
+    local function Update3DBox()
+        local connection
+        connection = RunService.RenderStepped:Connect(function()
+            if not Hub.Loaded or not Hub.Flags.ESP_3DBoxes or player == lp or IsWhitelisted(player) then
+                for _, line in ipairs(lines) do line.Visible = false end
+                return
+            end
+
+            local char = player.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local cf = root.CFrame
+                local size = Vector3.new(2, 3, 1.5) -- Приблизительный размер R6/R15
+                local sx, sy, sz = size.X/2, size.Y/2, size.Z/2
+
+                local points3D = {
+                    cf * CFrame.new(sx, sy, sz).Position,
+                    cf * CFrame.new(-sx, sy, sz).Position,
+                    cf * CFrame.new(-sx, -sy, sz).Position,
+                    cf * CFrame.new(sx, -sy, sz).Position,
+                    cf * CFrame.new(sx, sy, -sz).Position,
+                    cf * CFrame.new(-sx, sy, -sz).Position,
+                    cf * CFrame.new(-sx, -sy, -sz).Position,
+                    cf * CFrame.new(sx, -sy, -sz).Position,
+                }
+
+                local points2D = {}
+                local allOnScreen = true
+                for i = 1, 8 do
+                    local pt, onScreen = camera:WorldToViewportPoint(points3D[i])
+                    points2D[i] = Vector2.new(pt.X, pt.Y)
+                    if not onScreen then allOnScreen = false end
+                end
+
+                if allOnScreen then
+                    local edges = {
+                        {1,2}, {2,3}, {3,4}, {4,1}, -- Фронт
+                        {5,6}, {6,7}, {7,8}, {8,5}, -- Тыл
+                        {1,5}, {2,6}, {3,7}, {4,8}  -- Соединения
+                    }
+                    for i, edge in ipairs(edges) do
+                        lines[i].From = points2D[edge[1]]
+                        lines[i].To = points2D[edge[2]]
+                        lines[i].Visible = true
+                    end
+                else
+                    for _, line in ipairs(lines) do line.Visible = false end
+                end
+            else
+                for _, line in ipairs(lines) do line.Visible = false end
+            end
+        end)
+        table.insert(Hub.Cache.Connections, connection)
+    end
+    task.spawn(Update3DBox)
+end
+
+-- Классический 2D ESP
 local function DrawESP(player)
     if player == lp then return end
     
@@ -400,7 +639,7 @@ local function DrawESP(player)
     local function UpdateESP()
         local connection
         connection = RunService.RenderStepped:Connect(function()
-            if not Hub.Loaded or not (Hub.Flags.ESP_Boxes or Hub.Flags.ESP_Tracers or Hub.Flags.ESP_Names or Hub.Flags.ESP_Health) then
+            if not Hub.Loaded or IsWhitelisted(player) or not (Hub.Flags.ESP_Boxes or Hub.Flags.ESP_Tracers or Hub.Flags.ESP_Names or Hub.Flags.ESP_Health) then
                 box.Visible = false
                 tracer.Visible = false
                 name.Visible = false
@@ -418,17 +657,15 @@ local function DrawESP(player)
                     local sizeY = (camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3, 0)).Y - camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.5, 0)).Y)
                     local sizeX = sizeY * 0.6
                     
-                    -- Отрисовка Бокса
                     if Hub.Flags.ESP_Boxes then
                         box.Size = Vector2.new(sizeX, sizeY)
                         box.Position = Vector2.new(rootPos.X - sizeX / 2, rootPos.Y - sizeY / 2)
-                        box.Color = HumColor or Color3.fromRGB(0, 180, 255)
+                        box.Color = Color3.fromRGB(0, 180, 255)
                         box.Visible = true
                     else
                         box.Visible = false
                     end
                     
-                    -- Отрисовка Линий (Трассеров)
                     if Hub.Flags.ESP_Tracers then
                         tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
                         tracer.To = Vector2.new(rootPos.X, rootPos.Y)
@@ -437,7 +674,6 @@ local function DrawESP(player)
                         tracer.Visible = false
                     end
                     
-                    -- Отрисовка Ников
                     if Hub.Flags.ESP_Names then
                         name.Text = player.DisplayName .. " (@" .. player.Name .. ")"
                         name.Position = Vector2.new(rootPos.X, (rootPos.Y - sizeY / 2) - 15)
@@ -446,7 +682,6 @@ local function DrawESP(player)
                         name.Visible = false
                     end
                     
-                    -- Отрисовка Здоровья (Healthbar)
                     if Hub.Flags.ESP_Health then
                         local healthPercent = hum.Health / hum.MaxHealth
                         local barHeight = sizeY * healthPercent
@@ -476,10 +711,105 @@ local function DrawESP(player)
     task.spawn(UpdateESP)
 end
 
-Players.PlayerAdded:Connect(DrawESP)
-for _, p in ipairs(Players:GetPlayers()) do DrawESP(p) end
+Players.PlayerAdded:Connect(function(p)
+    DrawESP(p)
+    Draw3DBox(p)
+end)
+for _, p in ipairs(Players:GetPlayers()) do 
+    DrawESP(p) 
+    Draw3DBox(p)
+end
 
--- Potato PC (Режим оптимизации для слабых устройств)
+-- Хитбоксы
+SafeConnect(RunService.Heartbeat, function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp then
+            local char = p.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local hPart = Hub.Cache.HitboxParts[p.UserId]
+                if Hub.Flags.Hitboxes and not IsWhitelisted(p) then
+                    if not hPart then
+                        hPart = Instance.new("Part")
+                        hPart.Anchored = false
+                        hPart.CanCollide = false
+                        hPart.Massless = true
+                        hPart.Material = Enum.Material.ForceField
+                        hPart.Parent = workspace
+                        
+                        local weld = Instance.new("Weld")
+                        weld.Part0 = root
+                        weld.Part1 = hPart
+                        weld.Parent = hPart
+                        
+                        local decal = Instance.new("Decal")
+                        decal.Face = Enum.NormalId.Front
+                        decal.Parent = hPart
+                        local decal2 = Instance.new("Decal")
+                        decal2.Face = Enum.NormalId.Back
+                        decal2.Parent = hPart
+
+                        Hub.Cache.HitboxParts[p.UserId] = {Part = hPart, Decals = {decal, decal2}, Weld = weld}
+                    end
+                    local data = Hub.Cache.HitboxParts[p.UserId]
+                    data.Part.Size = Vector3.new(Hub.Flags.HitboxSize, Hub.Flags.HitboxSize, Hub.Flags.HitboxSize)
+                    data.Part.Color = GetRGBFromString(Hub.Flags.HitboxColorRGB)
+                    data.Part.Transparency = Hub.Flags.HitboxImageID ~= "" and 1 or 0.5
+                    
+                    for _, dec in ipairs(data.Decals) do
+                        if Hub.Flags.HitboxImageID ~= "" then
+                            dec.Texture = "rbxassetid://" .. Hub.Flags.HitboxImageID
+                            dec.Transparency = 0
+                        else
+                            dec.Transparency = 1
+                        end
+                    end
+                else
+                    if hPart then
+                        hPart.Part:Destroy()
+                        Hub.Cache.HitboxParts[p.UserId] = nil
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Растяг экрана и Камера
+SafeConnect(RunService.RenderStepped, function()
+    if Hub.Flags.AspectRatioEnabled then
+        camera.FieldOfView = 70 * Hub.Flags.AspectRatioValue
+    end
+    if Hub.Flags.ThirdPerson then
+        lp.CameraMaxZoomDistance = Hub.Flags.ThirdPersonZoom
+        lp.CameraMinZoomDistance = Hub.Flags.ThirdPersonZoom
+    else
+        lp.CameraMaxZoomDistance = 400
+        lp.CameraMinZoomDistance = 0.5
+    end
+end)
+
+local function ApplySkybox(type)
+    if Hub.Cache.CustomSky then Hub.Cache.CustomSky:Destroy() end
+    if type == "Default" then return end
+    
+    local sky = Instance.new("Sky")
+    sky.Name = "AuroraSky"
+    if type == "Black" then
+        sky.SkyboxBk = "" sky.SkyboxDn = "" sky.SkyboxFt = "" sky.SkyboxLf = "" sky.SkyboxRt = "" sky.SkyboxUp = ""
+        sky.SunTextureId = "" sky.MoonTextureId = ""
+        Lighting.TimeOfDay = "00:00:00"
+    elseif type == "Blue" then
+        sky.SkyboxBk = "rbxassetid://1417494030" sky.SkyboxDn = "rbxassetid://1417494030" sky.SkyboxFt = "rbxassetid://1417494030" 
+        sky.SkyboxLf = "rbxassetid://1417494030" sky.SkyboxRt = "rbxassetid://1417494030" sky.SkyboxUp = "rbxassetid://1417494030"
+    elseif type == "Space" then
+        sky.SkyboxBk = "rbxassetid://159454299" sky.SkyboxDn = "rbxassetid://159454296" sky.SkyboxFt = "rbxassetid://159454293"
+        sky.SkyboxLf = "rbxassetid://159454286" sky.SkyboxRt = "rbxassetid://159454300" sky.SkyboxUp = "rbxassetid://159454288"
+    end
+    sky.Parent = Lighting
+    Hub.Cache.CustomSky = sky
+end
+
 local function ApplyPotatoPC(state)
     Hub.Flags.PotatoPC = state
     if state then
@@ -509,7 +839,7 @@ local function ApplyPotatoPC(state)
 end
 
 -- ============================================================================
--- [4. КЛАСС И СТРУКТУРА AURORA MENU V2 — ИЗБЫТОЧНАЯ РУЧНАЯ ОТРИСОВКА]
+-- [4. КЛАСС И СТРУКТУРА AURORA MENU V2.5 — ИЗБЫТОЧНАЯ РУЧНАЯ ОТРИСОВКА]
 -- ============================================================================
 local Aurora = {}
 Aurora.__index = Aurora
@@ -537,7 +867,7 @@ end
 function Aurora.new(config)
     local self = setmetatable({}, Aurora)
     self.Title = config.Title or "Aurora"
-    self.SubTitle = config.SubTitle or "v2.0"
+    self.SubTitle = config.SubTitle or "v2.5"
     self.ActiveTab = nil
     self.Tabs = {}
     self:BuildUI()
@@ -553,7 +883,7 @@ function Aurora:BuildUI()
     if not screen.Parent then screen.Parent = lp:WaitForChild("PlayerGui") end
     self.Screen = screen
 
-    -- Драг-лаунчер (iOS Кнопка вызова меню)
+    -- Драг-лаунчер (Кнопка вызова меню, теперь таскается где угодно)
     local launcher = Instance.new("TextButton")
     launcher.Size = UDim2.new(0, 60, 0, 60)
     launcher.Position = UDim2.new(0.03, 0, 0.15, 0)
@@ -562,6 +892,8 @@ function Aurora:BuildUI()
     launcher.TextColor3 = THEME.Accent
     launcher.Font = Enum.Font.FredokaOne
     launcher.TextSize = 30
+    launcher.Active = true
+    launcher.Draggable = true -- Нативный перетаск, чтобы не лагало
     launcher.Parent = screen
 
     local lCor = Instance.new("UICorner")
@@ -581,25 +913,6 @@ function Aurora:BuildUI()
     lGrad.Parent = lStroke
 
     self.Launcher = launcher
-
-    -- Dragging Handler для Лаунчера
-    local dragStart, startPos, dragging = nil, nil, false
-    launcher.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = launcher.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
-        end
-    end)
-    launcher.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            launcher.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
 
     -- Главное окно
     local frame = Instance.new("Frame")
@@ -687,7 +1000,7 @@ function Aurora:BuildUI()
         menuOpen = not menuOpen
         if menuOpen then
             frame.Size = UDim2.new(0, 0, 0, 0)
-            frame.Position = launcher.Position
+            frame.Position = UDim2.new(0, launcher.AbsolutePosition.X, 0, launcher.AbsolutePosition.Y)
             frame.Visible = true
             tween(frame, EASE, {
                 Size = UDim2.new(0, 620, 0, 410),
@@ -697,7 +1010,7 @@ function Aurora:BuildUI()
         else
             tween(frame, EASE, {
                 Size = UDim2.new(0, 0, 0, 0),
-                Position = launcher.Position
+                Position = UDim2.new(0, launcher.AbsolutePosition.X, 0, launcher.AbsolutePosition.Y)
             })
             tween(launcher, EASE, {Rotation = 0, TextColor3 = THEME.Accent})
             task.wait(0.3)
@@ -723,7 +1036,6 @@ function Aurora:CreateTab(name)
         page.CanvasSize = UDim2.new(0, 0, 0, pLayout.AbsoluteContentSize.Y + 20)
     end)
 
-    -- Рендеринг кнопки вкладки в сайдбаре
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0.9, 0, 0, 38)
     btn.BackgroundColor3 = THEME.Bg
@@ -757,11 +1069,9 @@ function Aurora:CreateTab(name)
         self:SelectTab(tabData)
     end
 
-    -- Набор элементов управления (Tab API)
     local TabAPI = {}
     TabAPI.Page = page
 
-    -- Метод добавления Секции
     function TabAPI:AddSection(title)
         local sec = Instance.new("TextLabel")
         sec.Size = UDim2.new(0.95, 0, 0, 28)
@@ -774,7 +1084,6 @@ function Aurora:CreateTab(name)
         sec.Parent = page
     end
 
-    -- Метод добавления Переключателя (Toggle)
     function TabAPI:AddToggle(config)
         local card = Instance.new("Frame")
         card.Size = UDim2.new(0.95, 0, 0, 52)
@@ -852,7 +1161,6 @@ function Aurora:CreateTab(name)
         end)
     end
 
-    -- Метод добавления Ползунка (Slider)
     function TabAPI:AddSlider(config)
         local card = Instance.new("Frame")
         card.Size = UDim2.new(0.95, 0, 0, 60)
@@ -937,7 +1245,6 @@ function Aurora:CreateTab(name)
         end)
     end
 
-    -- Метод добавления Поля ввода (TextBox)
     function TabAPI:AddTextBox(config)
         local card = Instance.new("Frame")
         card.Size = UDim2.new(0.95, 0, 0, 52)
@@ -970,11 +1277,12 @@ function Aurora:CreateTab(name)
         box.BackgroundColor3 = THEME.Bg
         box.Text = config.Default or ""
         box.TextColor3 = THEME.Text
-        box.PlaceholderText = config.Placeholder or "Ввод данных..."
+        box.PlaceholderText = config.Placeholder or "Ввод..."
         box.PlaceholderColor3 = THEME.TextDim
         box.Font = Enum.Font.SourceSansSemibold
         box.TextSize = 14
         box.ClipsDescendants = true
+        box.ClearTextOnFocus = false
         box.Parent = card
 
         local bCor = Instance.new("UICorner")
@@ -991,7 +1299,6 @@ function Aurora:CreateTab(name)
         end)
     end
 
-    -- Метод добавления Кнопки (Button)
     function TabAPI:AddButton(config)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0.95, 0, 0, 42)
@@ -1018,6 +1325,72 @@ function Aurora:CreateTab(name)
         end)
     end
 
+    function TabAPI:AddDropdown(config)
+        local card = Instance.new("Frame")
+        card.Size = UDim2.new(0.95, 0, 0, 42)
+        card.BackgroundColor3 = THEME.BgStrong
+        card.ClipsDescendants = true
+        card.Parent = page
+
+        local cCor = Instance.new("UICorner")
+        cCor.CornerRadius = UDim.new(0, 10)
+        cCor.Parent = card
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 42)
+        btn.BackgroundTransparency = 1
+        btn.Text = "  " .. config.Name .. " - " .. config.Default
+        btn.TextColor3 = THEME.Text
+        btn.Font = Enum.Font.SourceSansBold
+        btn.TextSize = 15
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = card
+
+        local dropLayout = Instance.new("UIListLayout")
+        dropLayout.Padding = UDim.new(0, 5)
+        dropLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        
+        local itemsContainer = Instance.new("Frame")
+        itemsContainer.Size = UDim2.new(1, 0, 0, 0)
+        itemsContainer.Position = UDim2.new(0, 0, 0, 42)
+        itemsContainer.BackgroundTransparency = 1
+        itemsContainer.Parent = card
+        dropLayout.Parent = itemsContainer
+
+        local open = false
+        for _, opt in ipairs(config.Options) do
+            local itemBtn = Instance.new("TextButton")
+            itemBtn.Size = UDim2.new(0.9, 0, 0, 30)
+            itemBtn.BackgroundColor3 = THEME.Bg
+            itemBtn.Text = opt
+            itemBtn.TextColor3 = THEME.TextDim
+            itemBtn.Font = Enum.Font.SourceSans
+            itemBtn.TextSize = 14
+            itemBtn.Parent = itemsContainer
+            
+            local iCor = Instance.new("UICorner")
+            iCor.CornerRadius = UDim.new(0, 6)
+            iCor.Parent = itemBtn
+
+            itemBtn.MouseButton1Click:Connect(function()
+                btn.Text = "  " .. config.Name .. " - " .. opt
+                pcall(config.Callback, opt)
+                open = false
+                tween(card, TweenInfo.new(0.2), {Size = UDim2.new(0.95, 0, 0, 42)})
+            end)
+        end
+
+        btn.MouseButton1Click:Connect(function()
+            open = not open
+            if open then
+                local h = 42 + (#config.Options * 35) + 5
+                tween(card, TweenInfo.new(0.2), {Size = UDim2.new(0.95, 0, 0, h)})
+            else
+                tween(card, TweenInfo.new(0.2), {Size = UDim2.new(0.95, 0, 0, 42)})
+            end
+        end)
+    end
+
     return TabAPI
 end
 
@@ -1033,12 +1406,94 @@ function Aurora:SelectTab(tabData)
     tween(tabData.Label, EASE, {TextColor3 = THEME.Text})
 end
 
--- Инициализация графического интерфейса Aurora
-local menu = Aurora.new({ Title = "Brosa System", SubTitle = "v5.2 • Private Monolith Hub" })
+local menu = Aurora.new({ Title = "Brosa System", SubTitle = "v6.0 • FTAP Expansion" })
 
 -- ============================================================================
--- [5. НАПОЛНЕНИЕ ВКЛАДОК СЕТОМ ОПЦИЙ (БЕЗ УРЕЗАНИЯ)]
+-- [5. НАПОЛНЕНИЕ ВКЛАДОК СЕТОМ ОПЦИЙ (БЕЗ УРЕЗАНИЯ И С НОВЫМИ)]
 -- ============================================================================
+
+-- Вкладка: FTAP MODS (Новая!)
+local tabFtap = menu:CreateTab("FTAP Mods")
+tabFtap:AddSection("Быстрые действия (0s delay)")
+
+tabFtap:AddToggle({
+    Name = "Silent Aim (Круг Наводки)",
+    Description = "Центральный прицел авто-захвата торса (Клик = Захват)",
+    Default = Hub.Flags.SilentAim,
+    Callback = function(state) Hub.Flags.SilentAim = state end
+})
+
+tabFtap:AddSlider({
+    Name = "Радиус круга (FOV)",
+    Min = 20, Max = 300, Default = Hub.Flags.SilentAimFOV,
+    Callback = function(val) Hub.Flags.SilentAimFOV = val end
+})
+
+tabFtap:AddToggle({
+    Name = "Мгновенный захват (0s delay)",
+    Description = "Эмуляция оригинальной кнопки захвата (ЛКМ)",
+    Default = Hub.Flags.InstaGrab,
+    Callback = function(state) Hub.Flags.InstaGrab = state end
+})
+
+tabFtap:AddToggle({
+    Name = "Удалить под карту (PushDown)",
+    Description = "После захвата сразу спамит отдаление вектора глубоко вниз",
+    Default = Hub.Flags.UnderMapPush,
+    Callback = function(state) Hub.Flags.UnderMapPush = state end
+})
+
+tabFtap:AddSection("Защита и Контратаки")
+
+tabFtap:AddToggle({
+    Name = "Авто-перехват (Auto-Counter)",
+    Description = "Моментально хватает обидчика в ответ и кидает его",
+    Default = Hub.Flags.AutoCounterGrab,
+    Callback = function(state) Hub.Flags.AutoCounterGrab = state end
+})
+
+tabFtap:AddToggle({
+    Name = "Anti-Ragdoll (Защита от Желе)",
+    Description = "Авто-вставание из состояния сбития с ног",
+    Default = Hub.Flags.AntiRagdoll,
+    Callback = function(state) Hub.Flags.AntiRagdoll = state end
+})
+
+tabFtap:AddToggle({
+    Name = "Поддон (Абсолютный якорь)",
+    Description = "Спавнит тяжелую деталь в торсе и земле, откинуть невозможно",
+    Default = Hub.Flags.AnchorPallet,
+    Callback = function(state) Hub.Flags.AnchorPallet = state end
+})
+
+tabFtap:AddSection("Кастомные Боксы")
+
+tabFtap:AddToggle({
+    Name = "Включить Hitboxes",
+    Description = "Большие боксы вокруг противников для легкого захвата",
+    Default = Hub.Flags.Hitboxes,
+    Callback = function(state) Hub.Flags.Hitboxes = state end
+})
+
+tabFtap:AddSlider({
+    Name = "Размер Боксов",
+    Min = 2, Max = 15, Default = Hub.Flags.HitboxSize,
+    Callback = function(val) Hub.Flags.HitboxSize = val end
+})
+
+tabFtap:AddTextBox({
+    Name = "Цвет Боксов (RGB)",
+    Placeholder = "255,255,255",
+    Default = Hub.Flags.HitboxColorRGB,
+    Callback = function(text) Hub.Flags.HitboxColorRGB = text end
+})
+
+tabFtap:AddTextBox({
+    Name = "AssetID для Текстуры",
+    Placeholder = "ID Картинки Роблокс...",
+    Default = Hub.Flags.HitboxImageID,
+    Callback = function(text) Hub.Flags.HitboxImageID = text end
+})
 
 -- Вкладка: ДВИЖЕНИЕ
 local tabMovement = menu:CreateTab("Движение")
@@ -1050,24 +1505,17 @@ tabMovement:AddToggle({
     Default = Hub.Flags.WalkSpeedEnabled,
     Callback = function(state)
         Hub.Flags.WalkSpeedEnabled = state
-        if state then
-            pcall(function() lp.Character.Humanoid.WalkSpeed = Hub.Flags.WalkSpeedValue end)
-        else
-            pcall(function() lp.Character.Humanoid.WalkSpeed = 16 end)
-        end
+        if state then pcall(function() lp.Character.Humanoid.WalkSpeed = Hub.Flags.WalkSpeedValue end)
+        else pcall(function() lp.Character.Humanoid.WalkSpeed = 16 end) end
     end
 })
 
 tabMovement:AddSlider({
     Name = "Скорость перемещения",
-    Min = 16,
-    Max = 350,
-    Default = Hub.Flags.WalkSpeedValue,
+    Min = 16, Max = 350, Default = Hub.Flags.WalkSpeedValue,
     Callback = function(val)
         Hub.Flags.WalkSpeedValue = val
-        if Hub.Flags.WalkSpeedEnabled then
-            pcall(function() lp.Character.Humanoid.WalkSpeed = val end)
-        end
+        if Hub.Flags.WalkSpeedEnabled then pcall(function() lp.Character.Humanoid.WalkSpeed = val end) end
     end
 })
 
@@ -1077,218 +1525,78 @@ tabMovement:AddToggle({
     Default = Hub.Flags.JumpPowerEnabled,
     Callback = function(state)
         Hub.Flags.JumpPowerEnabled = state
-        if state then
-            pcall(function() lp.Character.Humanoid.JumpPower = Hub.Flags.JumpPowerValue end)
-        else
-            pcall(function() lp.Character.Humanoid.JumpPower = 50 end)
-        end
+        if state then pcall(function() lp.Character.Humanoid.JumpPower = Hub.Flags.JumpPowerValue end)
+        else pcall(function() lp.Character.Humanoid.JumpPower = 50 end) end
     end
 })
 
 tabMovement:AddSlider({
     Name = "Сила прыжка",
-    Min = 50,
-    Max = 500,
-    Default = Hub.Flags.JumpPowerValue,
+    Min = 50, Max = 500, Default = Hub.Flags.JumpPowerValue,
     Callback = function(val)
         Hub.Flags.JumpPowerValue = val
-        if Hub.Flags.JumpPowerEnabled then
-            pcall(function() lp.Character.Humanoid.JumpPower = val end)
-        end
+        if Hub.Flags.JumpPowerEnabled then pcall(function() lp.Character.Humanoid.JumpPower = val end) end
     end
 })
 
 tabMovement:AddSection("Супер-Способности")
+tabMovement:AddToggle({ Name = "Бесконечный Прыжок", Default = Hub.Flags.InfiniteJump, Callback = function(s) Hub.Flags.InfiniteJump = s end })
+tabMovement:AddToggle({ Name = "Режим полета (Fly)", Default = Hub.Flags.Fly, Callback = function(s) Hub.Flags.Fly = s end })
+tabMovement:AddSlider({ Name = "Скорость полета", Min = 10, Max = 350, Default = Hub.Flags.FlySpeed, Callback = function(v) Hub.Flags.FlySpeed = v end })
+tabMovement:AddToggle({ Name = "Noclip (Проход сквозь стены)", Default = Hub.Flags.Noclip, Callback = function(s) Hub.Flags.Noclip = s end })
 
-tabMovement:AddToggle({
-    Name = "Бесконечный Прыжок",
-    Description = "Прыгайте по невидимым уступам в воздухе",
-    Default = Hub.Flags.InfiniteJump,
-    Callback = function(state)
-        Hub.Flags.InfiniteJump = state
-    end
-})
-
-tabMovement:AddToggle({
-    Name = "Режим полета (Fly)",
-    Description = "Перемещение в стиле наблюдателя",
-    Default = Hub.Flags.Fly,
-    Callback = function(state)
-        Hub.Flags.Fly = state
-    end
-})
-
-tabMovement:AddSlider({
-    Name = "Скорость полета",
-    Min = 10,
-    Max = 350,
-    Default = Hub.Flags.FlySpeed,
-    Callback = function(val)
-        Hub.Flags.FlySpeed = val
-    end
-})
-
-tabMovement:AddToggle({
-    Name = "Noclip (Проход сквозь стены)",
-    Description = "Отключает коллизию всех частей вашего тела",
-    Default = Hub.Flags.Noclip,
-    Callback = function(state)
-        Hub.Flags.Noclip = state
-    end
-})
-
-
--- Вкладка: ВРЕДИТЕЛЬСТВО
+-- Вкладка: ТРОЛЛИНГ
 local tabTroll = menu:CreateTab("Троллинг")
 tabTroll:AddSection("Контроль Жертвы")
 
-tabTroll:AddTextBox({
-    Name = "Имя Жертвы (Ник)",
-    Placeholder = "Имя...",
-    Default = Hub.Flags.TargetPlayer,
-    Callback = function(text)
-        Hub.Flags.TargetPlayer = text
-    end
-})
-
+tabTroll:AddTextBox({ Name = "Имя Жертвы (Ник)", Placeholder = "Имя...", Default = Hub.Flags.TargetPlayer, Callback = function(t) Hub.Flags.TargetPlayer = t end })
 tabTroll:AddButton({
     Name = "Fling Target (Разорвать цель)",
     Callback = function()
         local target = FindPlayerByName(Hub.Flags.TargetPlayer)
-        if target then
-            ExecuteFling(target)
-        else
-            StarterGui:SetCore("SendNotification", {
-                Title = "Ошибка",
-                Text = "Целевой игрок не найден в лобби!",
-                Duration = 3
-            })
-        end
+        if target then ExecuteFling(target) else StarterGui:SetCore("SendNotification", {Title="Ошибка", Text="Игрок не найден!", Duration=3}) end
     end
 })
-
-tabTroll:AddToggle({
-    Name = "Orbit Target (Запуск орбиты)",
-    Description = "Режим вращения вокруг цели",
-    Default = Hub.Flags.OrbitPlayer,
-    Callback = function(state)
-        Hub.Flags.OrbitPlayer = state
-    end
-})
-
-tabTroll:AddSlider({
-    Name = "Дистанция орбиты",
-    Min = 2,
-    Max = 60,
-    Default = Hub.Flags.OrbitDistance,
-    Callback = function(val)
-        Hub.Flags.OrbitDistance = val
-    end
-})
-
-tabTroll:AddSlider({
-    Name = "Скорость орбиты",
-    Min = 1,
-    Max = 40,
-    Default = Hub.Flags.OrbitSpeed,
-    Callback = function(val)
-        Hub.Flags.OrbitSpeed = val
-    end
-})
+tabTroll:AddToggle({ Name = "Orbit Target (Запуск орбиты)", Default = Hub.Flags.OrbitPlayer, Callback = function(s) Hub.Flags.OrbitPlayer = s end })
+tabTroll:AddSlider({ Name = "Дистанция орбиты", Min = 2, Max = 60, Default = Hub.Flags.OrbitDistance, Callback = function(v) Hub.Flags.OrbitDistance = v end })
+tabTroll:AddSlider({ Name = "Скорость орбиты", Min = 1, Max = 40, Default = Hub.Flags.OrbitSpeed, Callback = function(v) Hub.Flags.OrbitSpeed = v end })
 
 tabTroll:AddSection("Глобальный Хаос")
-
-tabTroll:AddToggle({
-    Name = "Fling Aura (Аура смерти)",
-    Description = "Авто-флинг любого игрока, зашедшего в вашу зону",
-    Default = Hub.Flags.FlingAura,
-    Callback = function(state)
-        Hub.Flags.FlingAura = state
-    end
-})
-
-tabTroll:AddToggle({
-    Name = "Click Fling (+Ctrl)",
-    Description = "Зажмите левый Ctrl и кликните на игрока для флинга",
-    Default = Hub.Flags.ClickFling,
-    Callback = function(state)
-        Hub.Flags.ClickFling = state
-    end
-})
-
+tabTroll:AddToggle({ Name = "Fling Aura (Аура смерти)", Default = Hub.Flags.FlingAura, Callback = function(s) Hub.Flags.FlingAura = s end })
+tabTroll:AddToggle({ Name = "Click Fling (+Ctrl)", Default = Hub.Flags.ClickFling, Callback = function(s) Hub.Flags.ClickFling = s end })
 tabTroll:AddButton({
     Name = "Fling All (Флинг всех игроков)",
     Callback = function()
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= lp then
-                task.spawn(function() ExecuteFling(p) end)
-            end
+            if p ~= lp and not IsWhitelisted(p) then task.spawn(function() ExecuteFling(p) end) end
         end
     end
 })
-
-tabTroll:AddButton({
-    Name = "Mass Weld (Глобальная связка физики)",
-    Callback = function()
-        RunMassWeld()
-    end
-})
-
-tabTroll:AddToggle({
-    Name = "Lobby Freeze (Загрузка сервера)",
-    Description = "Шторм пакетами позиционирования для задержки физики",
-    Default = Hub.Flags.LobbyFreeze,
-    Callback = function(state)
-        Hub.Flags.LobbyFreeze = state
-    end
-})
-
+tabTroll:AddButton({ Name = "Mass Weld (Глобальная связка физики)", Callback = function() RunMassWeld() end })
+tabTroll:AddToggle({ Name = "Lobby Freeze (Загрузка сервера)", Default = Hub.Flags.LobbyFreeze, Callback = function(s) Hub.Flags.LobbyFreeze = s end })
 
 -- Вкладка: ВИЗУАЛЫ
 local tabVisuals = menu:CreateTab("Визуалы")
 tabVisuals:AddSection("Отображение ESP")
+tabVisuals:AddToggle({ Name = "3D ESP Боксы (Новое!)", Description = "Объемные коробки, вращающиеся с игроком", Default = Hub.Flags.ESP_3DBoxes, Callback = function(s) Hub.Flags.ESP_3DBoxes = s end })
+tabVisuals:AddToggle({ Name = "ESP 2D Боксы", Default = Hub.Flags.ESP_Boxes, Callback = function(s) Hub.Flags.ESP_Boxes = s end })
+tabVisuals:AddToggle({ Name = "ESP Трассеры", Default = Hub.Flags.ESP_Tracers, Callback = function(s) Hub.Flags.ESP_Tracers = s end })
+tabVisuals:AddToggle({ Name = "ESP Имена", Default = Hub.Flags.ESP_Names, Callback = function(s) Hub.Flags.ESP_Names = s end })
+tabVisuals:AddToggle({ Name = "ESP Полоска здоровья", Default = Hub.Flags.ESP_Health, Callback = function(s) Hub.Flags.ESP_Health = s end })
 
-tabVisuals:AddToggle({
-    Name = "ESP Боксы",
-    Description = "Квадратные рамки вокруг тел игроков",
-    Default = Hub.Flags.ESP_Boxes,
-    Callback = function(state)
-        Hub.Flags.ESP_Boxes = state
-    end
+tabVisuals:AddSection("Рендеринг и Камера")
+tabVisuals:AddDropdown({
+    Name = "Кастомное Небо (Skybox)",
+    Options = {"Default", "Black", "Blue", "Space"},
+    Default = "Default",
+    Callback = function(sel) ApplySkybox(sel) end
 })
-
-tabVisuals:AddToggle({
-    Name = "ESP Трассеры",
-    Description = "Линии наведения от центра экрана к целям",
-    Default = Hub.Flags.ESP_Tracers,
-    Callback = function(state)
-        Hub.Flags.ESP_Tracers = state
-    end
-})
-
-tabVisuals:AddToggle({
-    Name = "ESP Имена",
-    Description = "Отображает дисплей-неймы и юзернеймы над целями",
-    Default = Hub.Flags.ESP_Names,
-    Callback = function(state)
-        Hub.Flags.ESP_Names = state
-    end
-})
-
-tabVisuals:AddToggle({
-    Name = "ESP Полоска здоровья",
-    Description = "Шкала ХП слева от бокса игрока",
-    Default = Hub.Flags.ESP_Health,
-    Callback = function(state)
-        Hub.Flags.ESP_Health = state
-    end
-})
-
-tabVisuals:AddSection("Окружающая Среда")
-
+tabVisuals:AddToggle({ Name = "Третье Лицо", Description = "Включает принудительный кастомный зум", Default = Hub.Flags.ThirdPerson, Callback = function(s) Hub.Flags.ThirdPerson = s end })
+tabVisuals:AddSlider({ Name = "Отдаление камеры", Min = 5, Max = 150, Default = Hub.Flags.ThirdPersonZoom, Callback = function(v) Hub.Flags.ThirdPersonZoom = v end })
+tabVisuals:AddToggle({ Name = "Растяг Экрана (Aspect Ratio)", Default = Hub.Flags.AspectRatioEnabled, Callback = function(s) Hub.Flags.AspectRatioEnabled = s end })
+tabVisuals:AddSlider({ Name = "Сила растяга (FOV Mult)", Min = 1, Max = 2, Default = Hub.Flags.AspectRatioValue, Callback = function(v) Hub.Flags.AspectRatioValue = v end })
 tabVisuals:AddToggle({
     Name = "Режим Fullbright (День)",
-    Description = "Максимально яркое освещение карты без ночи",
     Default = Hub.Flags.Fullbright,
     Callback = function(state)
         Hub.Flags.Fullbright = state
@@ -1297,79 +1605,56 @@ tabVisuals:AddToggle({
             Lighting.OutdoorAmbient = Hub.Cache.OriginalLighting.OutdoorAmbient
             Lighting.Brightness = Hub.Cache.OriginalLighting.Brightness
             Lighting.ClockTime = Hub.Cache.OriginalLighting.ClockTime
+        else
+            Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+            Lighting.Brightness = 2
+            Lighting.ClockTime = 12
         end
     end
 })
+tabVisuals:AddToggle({ Name = "Potato PC Mode (Оптимизация)", Default = Hub.Flags.PotatoPC, Callback = function(s) ApplyPotatoPC(s) end })
 
-tabVisuals:AddToggle({
-    Name = "Potato PC Mode (Оптимизация)",
-    Description = "Убирает тяжелые текстуры и материалы для буста FPS",
-    Default = Hub.Flags.PotatoPC,
-    Callback = function(state)
-        ApplyPotatoPC(state)
+-- Вкладка: ИСКЛЮЧЕНИЯ (WHITELIST)
+local tabWhite = menu:CreateTab("Исключения")
+tabWhite:AddSection("Белый список игроков")
+
+-- Динамическое обновление списка игроков для Вайтлиста
+local function UpdateWhitelistUI()
+    -- Очистка старых переключателей (оставляем только Title/Section)
+    for _, child in ipairs(tabWhite.Page:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
     end
-})
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp then
+            tabWhite:AddToggle({
+                Name = p.Name,
+                Description = "Защита и игнорирование от скрипта",
+                Default = Hub.Flags.Whitelist[p.Name] or false,
+                Callback = function(state)
+                    Hub.Flags.Whitelist[p.Name] = state
+                end
+            })
+        end
+    end
+end
+tabWhite:AddButton({Name = "Обновить список игроков", Callback = UpdateWhitelistUI})
+UpdateWhitelistUI()
 
-
--- Вкладка: ЗАЩИТА & СПАМ
+-- Вкладка: ЗАЩИТА
 local tabDefense = menu:CreateTab("Защита")
 tabDefense:AddSection("Мета-Механика")
-
-tabDefense:AddToggle({
-    Name = "Bypass Metatable (Обход защиты)",
-    Description = "Препятствует обнаружению кастомной скорости сервером",
-    Default = Hub.Flags.BypassMetatable,
-    Callback = function(state)
-        Hub.Flags.BypassMetatable = state
-    end
-})
-
-tabDefense:AddToggle({
-    Name = "Anti-Grab (Защита от захвата)",
-    Description = "Защищает персонажа от попыток унести его",
-    Default = Hub.Flags.AntiGrab,
-    Callback = function(state)
-        Hub.Flags.AntiGrab = state
-    end
-})
-
-tabDefense:AddToggle({
-    Name = "Anti-Fling (Анти-Раскрутка)",
-    Description = "Ограничивает падение и вращение при сторонних таранах",
-    Default = Hub.Flags.AntiFling,
-    Callback = function(state)
-        Hub.Flags.AntiFling = state
-    end
-})
-
+tabDefense:AddToggle({ Name = "Bypass Metatable (Обход защиты)", Default = Hub.Flags.BypassMetatable, Callback = function(s) Hub.Flags.BypassMetatable = s end })
+tabDefense:AddToggle({ Name = "Anti-Grab (Стандартный)", Default = Hub.Flags.AntiGrab, Callback = function(s) Hub.Flags.AntiGrab = s end })
+tabDefense:AddToggle({ Name = "Anti-Fling (Анти-Раскрутка)", Default = Hub.Flags.AntiFling, Callback = function(s) Hub.Flags.AntiFling = s end })
 tabDefense:AddSection("Автоматизация")
+tabDefense:AddToggle({ Name = "Спамер в глобальный чат", Default = Hub.Flags.ChatSpam, Callback = function(s) Hub.Flags.ChatSpam = s end })
+tabDefense:AddTextBox({ Name = "Текст сообщения", Default = Hub.Flags.ChatSpamMessage, Callback = function(t) Hub.Flags.ChatSpamMessage = t end })
 
-tabDefense:AddToggle({
-    Name = "Спамер в глобальный чат",
-    Description = "Автоматическая рассылка заданного сообщения в лобби",
-    Default = Hub.Flags.ChatSpam,
-    Callback = function(state)
-        Hub.Flags.ChatSpam = state
-    end
-})
-
-tabDefense:AddTextBox({
-    Name = "Текст сообщения",
-    Placeholder = "Пиши тут...",
-    Default = Hub.Flags.ChatSpamMessage,
-    Callback = function(text)
-        Hub.Flags.ChatSpamMessage = text
-    end
-})
-
-
--- ============================================================================
--- [6. ЭЛИТНАЯ КАРТОЧКА ПРОФИЛЯ — ПОЛНОРАЗМЕРНЫЙ ФРЕЙМ С АВАТАРОМ]
--- ============================================================================
+-- Вкладка: ПРОФИЛЬ (Полная копия старого кода)
 local tabProfile = menu:CreateTab("Профиль")
 tabProfile:AddSection("Личная Сводка Данных")
 
--- Создание ручной массивной карточки игрока
 local profileCard = Instance.new("Frame")
 profileCard.Size = UDim2.new(0.95, 0, 0, 290)
 profileCard.BackgroundColor3 = THEME.BgStrong
@@ -1384,12 +1669,11 @@ pStroke.Color = Color3.fromRGB(35, 38, 50)
 pStroke.Thickness = 1.5
 pStroke.Parent = profileCard
 
--- Отрисовка 3D Headshot Аватара (Используем API Роблокса)
 local avatarImage = Instance.new("ImageLabel")
 avatarImage.Size = UDim2.new(0, 100, 0, 100)
 avatarImage.Position = UDim2.new(0.5, -50, 0, 18)
 avatarImage.BackgroundColor3 = THEME.Bg
-avatarImage.Image = "rbxasset://textures/ui/Guideline.png" -- Заглушка
+avatarImage.Image = "rbxasset://textures/ui/Guideline.png"
 avatarImage.Parent = profileCard
 
 local aCor = Instance.new("UICorner")
@@ -1401,7 +1685,6 @@ aStroke.Color = THEME.Accent
 aStroke.Thickness = 2.5
 aStroke.Parent = avatarImage
 
--- Имя и Псевдоним
 local nameLabel = Instance.new("TextLabel")
 nameLabel.Size = UDim2.new(1, -24, 0, 26)
 nameLabel.Position = UDim2.new(0, 12, 0, 125)
@@ -1413,7 +1696,6 @@ nameLabel.TextAlignment = Enum.TextAlignment.Center
 nameLabel.BackgroundTransparency = 1
 nameLabel.Parent = profileCard
 
--- Стаж аккаунта
 local ageLabel = Instance.new("TextLabel")
 ageLabel.Size = UDim2.new(1, -24, 0, 20)
 ageLabel.Position = UDim2.new(0, 12, 0, 155)
@@ -1425,7 +1707,6 @@ ageLabel.TextAlignment = Enum.TextAlignment.Center
 ageLabel.BackgroundTransparency = 1
 ageLabel.Parent = profileCard
 
--- Мониторинг друзей на сервере
 local friendsLabel = Instance.new("TextLabel")
 friendsLabel.Size = UDim2.new(1, -24, 0, 20)
 friendsLabel.Position = UDim2.new(0, 12, 0, 178)
@@ -1437,7 +1718,6 @@ friendsLabel.TextAlignment = Enum.TextAlignment.Center
 friendsLabel.BackgroundTransparency = 1
 friendsLabel.Parent = profileCard
 
--- Метаданные Сервера и Системы
 local statsLabel = Instance.new("TextLabel")
 statsLabel.Size = UDim2.new(1, -24, 0, 20)
 statsLabel.Position = UDim2.new(0, 12, 0, 201)
@@ -1460,43 +1740,28 @@ placeLabel.TextAlignment = Enum.TextAlignment.Center
 placeLabel.BackgroundTransparency = 1
 placeLabel.Parent = profileCard
 
--- Асинхронная загрузка 3D-аватара головы
 task.spawn(function()
     local userId = lp.UserId
-    local thumbType = Enum.ThumbnailType.HeadShot
-    local thumbSize = Enum.ThumbnailSize.Size150x150
-    local content, isReady = Players:GetUserThumbnailAsync(userId, thumbType, thumbSize)
-    if isReady then
-        avatarImage.Image = content
-    end
+    local content, isReady = Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+    if isReady then avatarImage.Image = content end
 end)
 
--- Сканер Друзей в реальном времени
 local function RecalculateFriends()
     local counter = 0
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= lp then
-            local success, areFriends = pcall(function()
-                return lp:IsFriendsWith(player.UserId)
-            end)
-            if success and areFriends then
-                counter = counter + 1
-            end
+            local success, areFriends = pcall(function() return lp:IsFriendsWith(player.UserId) end)
+            if success and areFriends then counter = counter + 1 end
         end
     end
     friendsLabel.Text = "Друзей на текущем сервере: " .. tostring(counter)
 end
-
 task.spawn(RecalculateFriends)
 SafeConnect(Players.PlayerAdded, RecalculateFriends)
 SafeConnect(Players.PlayerRemoving, RecalculateFriends)
 
--- Монитор Пинга и FPS
 local fpsCounter = 0
-SafeConnect(RunService.Heartbeat, function(step)
-    fpsCounter = math.floor(1 / step)
-end)
-
+SafeConnect(RunService.Heartbeat, function(step) fpsCounter = math.floor(1 / step) end)
 task.spawn(function()
     while task.wait(1) do
         if Hub.Loaded then
@@ -1508,7 +1773,6 @@ task.spawn(function()
     end
 end)
 
-
 -- Вкладка: НАСТРОЙКИ ЯДРА & ВЫГРУЗКА
 local tabCore = menu:CreateTab("Настройки")
 tabCore:AddSection("Конфигурация Ядра")
@@ -1516,27 +1780,18 @@ tabCore:AddSection("Конфигурация Ядра")
 tabCore:AddButton({
     Name = "Перепривязать Metatable Bypass",
     Callback = function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "Мета-Связь",
-            Text = "Metatable Bypass успешно переподключен к Lua State!",
-            Duration = 3
-        })
+        StarterGui:SetCore("SendNotification", {Title = "Мета-Связь", Text = "Metatable Bypass успешно переподключен!", Duration = 3})
     end
 })
 
-tabCore:AddSection("Удаление Скрипта")
-
--- Функция полной деструкции монолита
 local function TerminateHub()
     Hub.Loaded = false
     
-    -- Отключение всех ивентов
     for _, conn in ipairs(Hub.Cache.Connections) do
         if conn.Connected then conn:Disconnect() end
     end
     table.clear(Hub.Cache.Connections)
     
-    -- Возврат света
     Lighting.Ambient = Hub.Cache.OriginalLighting.Ambient
     Lighting.OutdoorAmbient = Hub.Cache.OriginalLighting.OutdoorAmbient
     Lighting.Brightness = Hub.Cache.OriginalLighting.Brightness
@@ -1544,53 +1799,52 @@ local function TerminateHub()
     Lighting.FogEnd = Hub.Cache.OriginalLighting.FogEnd
     Lighting.GlobalShadows = Hub.Cache.OriginalLighting.GlobalShadows
     
-    -- Очистка 2D ESP чертежей
     for _, item in pairs(Hub.Cache.EspBoxes) do item:Destroy() end
     for _, item in pairs(Hub.Cache.EspTracers) do item:Destroy() end
     for _, item in pairs(Hub.Cache.EspNames) do item:Destroy() end
     for _, item in pairs(Hub.Cache.EspHealth) do item:Destroy() end
+    for _, lines in pairs(Hub.Cache.Esp3DBoxes) do
+        for _, line in ipairs(lines) do line:Destroy() end
+    end
     
     table.clear(Hub.Cache.EspBoxes)
     table.clear(Hub.Cache.EspTracers)
     table.clear(Hub.Cache.EspNames)
     table.clear(Hub.Cache.EspHealth)
+    table.clear(Hub.Cache.Esp3DBoxes)
     
-    -- Деструкция GUI
+    if Hub.Cache.FovCircle then Hub.Cache.FovCircle:Destroy() end
+    if Hub.Cache.PalletPart then Hub.Cache.PalletPart:Destroy() end
+    if Hub.Cache.CustomSky then Hub.Cache.CustomSky:Destroy() end
+    
+    for _, partData in pairs(Hub.Cache.HitboxParts) do
+        if partData and partData.Part then partData.Part:Destroy() end
+    end
+    
     if menu.Screen then menu.Screen:Destroy() end
     
-    -- Возвращение текстур Potato PC на исходные
     for obj, data in pairs(Hub.Cache.OriginalMaterials) do
-        if obj and obj.Parent then
-            obj.Material = data[1]
-            obj.Reflectance = data[2]
-        end
+        if obj and obj.Parent then obj.Material = data[1] obj.Reflectance = data[2] end
     end
     
     pcall(function()
         local hum = lp.Character:FindFirstChildOfClass("Humanoid")
-        if hum then 
-            hum.PlatformStand = false
-            hum.WalkSpeed = 16
-            hum.JumpPower = 50
-        end
+        if hum then hum.PlatformStand = false hum.WalkSpeed = 16 hum.JumpPower = 50 end
+        lp.CameraMaxZoomDistance = 400
+        camera.FieldOfView = 70
     end)
     
     _G.BrosaHubGlobal = nil
     print("[Brosa System]: Скрипт полностью выгружен, все хуки и GUI зачищены.")
 end
 
-tabCore:AddButton({
-    Name = "Destroy Script (Выгрузить полностью)",
-    Callback = function()
-        TerminateHub()
-    end
-})
+tabCore:AddSection("Удаление Скрипта")
+tabCore:AddButton({ Name = "Destroy Script (Выгрузить полностью)", Callback = function() TerminateHub() end })
 
 -- ============================================================================
 -- [7. ОБРАБОТЧИКИ СОБЫТИЙ И ЖИЗНЕННЫЙ ЦИКЛ ПЕРСОНАЖА]
 -- ============================================================================
 
--- Обход метатаблицы (Защита от проверок в старых версиях античитов)
 local rawMetatable = getrawmetatable(game)
 local oldIndex = rawMetatable.__index
 local oldNewIndex = rawMetatable.__newindex
@@ -1617,18 +1871,13 @@ rawMetatable.__newindex = newcclosure(function(self, index, val)
 end)
 setreadonly(rawMetatable, true)
 
--- Авто-накат параметров при спавне
 SafeConnect(lp.CharacterAdded, function(char)
     local hum = char:WaitForChild("Humanoid", 15)
     if hum then
         task.wait(0.6)
-        if Hub.Flags.WalkSpeedEnabled then
-            hum.WalkSpeed = Hub.Flags.WalkSpeedValue
-        end
-        if Hub.Flags.JumpPowerEnabled then
-            hum.JumpPower = Hub.Flags.JumpPowerValue
-        end
+        if Hub.Flags.WalkSpeedEnabled then hum.WalkSpeed = Hub.Flags.WalkSpeedValue end
+        if Hub.Flags.JumpPowerEnabled then hum.JumpPower = Hub.Flags.JumpPowerValue end
     end
 end)
 
-print("[Brosa System v5.2]: Монолитный скрипт загружен! Конструктор Aurora v2 инициализирован в полном объеме.")
+print("[Brosa System v6.0]: Монолит загружен! Все FTAP модули и Aurora v2.5 активированы.")
