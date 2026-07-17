@@ -1,8 +1,8 @@
 --[[
     ================================================================================
     👑 BROSA SYSTEM v5.5 — PRIVATE UNLIMITED MONOLITHIC HYBRID SCRIPT HUB
-    🎨 CORE GUI INTERFACE: AURORA MENU v2 (FULLY EXPANDED & PERFECTED)
-    🔒 STATUS: UNDETECTED | BYPASS: ACTIVE | FIXES: PHYSICAL CORE & COMBAT ENGINE
+    🎨 CORE GUI INTERFACE: AURORA MENU v2 (FULLY EXPANDED MOBILE/PC EDITION)
+    🔒 STATUS: UNDETECTED | BYPASS: ACTIVE | OPTIMIZED FOR DELTA/HYDROGEN/FLUXUS
     ================================================================================
 ]]
 
@@ -10,6 +10,9 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
+-- ============================================================================
+-- [1. СИСТЕМНЫЕ СЕРВИСЫ И ИНИЦИАЛИЗАЦИЯ]
+-- ============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -30,16 +33,17 @@ if not lp.Character then
 end
 local camera = workspace.CurrentCamera
 
+-- Защита от повторного запуска (Анти-дабл)
 if _G.BrosaHubGlobal and _G.BrosaHubGlobal.Loaded then
     warn("[Brosa System]: Скрипт уже запущен! Повторная инициализация отклонена.")
     return
 end
 
--- Глобальная структура данных (Brosa Core State — Все оригинальные + новые флаги)
+-- Глобальная структура данных (Brosa Core State)
 _G.BrosaHubGlobal = {
     Loaded = true,
     Flags = {
-        -- Движение (Оригинал)
+        -- Движение
         WalkSpeedEnabled = false,
         WalkSpeedValue = 16,
         JumpPowerEnabled = false,
@@ -49,7 +53,7 @@ _G.BrosaHubGlobal = {
         Fly = false,
         FlySpeed = 50,
         
-        -- Вредительство & Троллинг (Оригинал)
+        -- Вредительство & Троллинг
         FlingAura = false,
         ClickFling = false,
         FlingAll = false,
@@ -62,15 +66,8 @@ _G.BrosaHubGlobal = {
         OrbitDistance = 5,
         MassWeld = false,
         LobbyFreeze = false,
-
-        -- НОВЫЕ ТРОЛЛИНГ/БОЙ ФЛАГИ (Исправление Аима и Хитбоксов)
-        SilentAim = false,
-        AimRadius = 150,
-        CustomBoxes = false,
-        BoxSize = 6,
-        AutoUnderMap = false,
         
-        -- Визуалы & ESP (Оригинал + Новая Камера)
+        -- Визуалы & ESP
         ESP_Players = false,
         ESP_Tracers = false,
         ESP_Boxes = false,
@@ -78,19 +75,31 @@ _G.BrosaHubGlobal = {
         ESP_Health = false,
         Fullbright = false,
         PotatoPC = false,
-        ThirdPerson = false,
-        CamDist = 15,
-        StretchToggle = false,
-        Stretch = 70,
         
-        -- Защита & Обходы (Оригинал)
+        -- Защита & Обходы
         BypassMetatable = true,
         AntiGrab = false,
         AntiFling = false,
         AntiReport = false,
         ChatSpam = false,
         ChatSpamMessage = "Brosa System v5.5 on Top!",
-        AutoFarm = false
+        AutoFarm = false,
+
+        -- НОВЫЕ ФУНКЦИИ ЗАХВАТА & АИМА
+        GrabAimbot = false,
+        ShowFovCircle = true,
+        FarThrow = false,
+        SnaplinesEnabled = false,
+        AutoCounterGrab = false,
+        UnGrabable = false,
+        CarGrabAll = false
+    },
+    Options = {
+        GrabFovRadius = 150,
+        GrabMaxDistance = 250,
+        ThrowForce = 2000,
+        GrabFovColor = Color3.fromRGB(0, 180, 255),
+        LineColor = Color3.fromRGB(0, 180, 255),
     },
     Cache = {
         OriginalLighting = {
@@ -106,23 +115,131 @@ _G.BrosaHubGlobal = {
         EspTracers = {},
         EspNames = {},
         EspHealth = {},
-        Hitboxes = {},
         OriginalMaterials = {}
     }
 }
 
 local Hub = _G.BrosaHubGlobal
 
+-- Безопасное подключение событий
 local function SafeConnect(signal, callback)
     local connection = signal:Connect(callback)
     table.insert(Hub.Cache.Connections, connection)
     return connection
 end
 
+-- Вспомогательные функции получения сущностей
+local function getChar() return lp.Character end
+local function getRoot() return lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") end
+local function getHum() return lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") end
+
+--============================================================
+-- ТОКЕНЫ ДИЗАЙНА AURORA MENU V2
+--============================================================
+local THEME = {
+    Bg          = Color3.fromRGB(24, 24, 29),
+    BgStrong    = Color3.fromRGB(30, 30, 37),
+    Stroke      = Color3.fromRGB(255, 255, 255),
+    Text        = Color3.fromRGB(245, 245, 247),
+    TextDim     = Color3.fromRGB(152, 152, 163),
+    AccentA     = Color3.fromRGB(0, 180, 255),
+    AccentB     = Color3.fromRGB(79, 216, 255),
+    Danger      = Color3.fromRGB(255, 95, 87),
+    Success     = Color3.fromRGB(52, 211, 153),
+}
+
+local SPRING = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local EASE   = TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local FAST   = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+--============================================================
+-- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ОТРИСОВКИ GUI
+--============================================================
+local function new(class, props)
+    local inst = Instance.new(class)
+    for k, v in pairs(props) do
+        if k ~= "Parent" then inst[k] = v end
+    end
+    if props.Parent then inst.Parent = props.Parent end
+    return inst
+end
+
+local function corner(parent, radius) return new("UICorner", { CornerRadius = UDim.new(0, radius), Parent = parent }) end
+local function stroke(parent, color, thickness, transparency)
+    return new("UIStroke", { Color = color or THEME.Stroke, Thickness = thickness or 1, Transparency = transparency or 0.9, Parent = parent })
+end
+local function gradient(parent, rotation)
+    return new("UIGradient", { Color = ColorSequence.new(THEME.AccentA, THEME.AccentB), Rotation = rotation or 45, Parent = parent })
+end
+local function tween(inst, info, props)
+    local t = TweenService:Create(inst, info, props)
+    t:Play()
+    return t
+end
+
+local function viewportSize()
+    return camera and camera.ViewportSize or Vector2.new(1280, 720)
+end
+
+--============================================================
+-- УНИВЕРСАЛЬНОЕ ПЕРЕТАСКИВАНИЕ
+--============================================================
+local function makeDraggable(handle, target, opts)
+    opts = opts or {}
+    local dragging, dragInput, dragStart, startPos, moved
+
+    local function clamp(pos)
+        if not opts.Clamp then return pos end
+        local vp = viewportSize()
+        local size = target.AbsoluteSize
+        local x = math.clamp(pos.X.Offset, 0, math.max(0, vp.X - size.X))
+        local y = math.clamp(pos.Y.Offset, 0, math.max(0, vp.Y - size.Y))
+        return UDim2.new(0, x, 0, y)
+    end
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            moved = false
+            dragStart = input.Position
+            startPos = target.Position
+            local conn
+            conn = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    if opts.OnEnd then opts.OnEnd(moved) end
+                    conn:Disconnect()
+                end
+            end)
+        end
+    end)
+
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            if math.abs(delta.X) > 3 or math.abs(delta.Y) > 3 then moved = true end
+            local newPos = UDim2.new(
+                0, startPos.X.Offset + delta.X,
+                0, startPos.Y.Offset + delta.Y
+            )
+            newPos = clamp(newPos)
+            target.Position = newPos
+            if opts.OnMove then opts.OnMove(newPos) end
+        end
+    end)
+end
+
 -- ============================================================================
 -- [2. СЛОЖНЫЙ МАТЕМАТИЧЕСКИЙ И ФИЗИЧЕСКИЙ ДВИЖОК ЭКСПЛУАТОВ]
 -- ============================================================================
 
+-- Вспомогательная функция поиска игрока по части имени
 local function FindPlayerByName(name)
     if not name or name == "" then return nil end
     name = name:lower()
@@ -134,170 +251,58 @@ local function FindPlayerByName(name)
     return nil
 end
 
--- Отрисовка FOV кольца для Сайлент Аима
-local fovCircle = Drawing.new("Circle")
-fovCircle.Visible = false
-fovCircle.Color = Color3.fromRGB(0, 255, 150)
-fovCircle.Thickness = 1.5
-fovCircle.NumSides = 64
-fovCircle.Filled = false
-
-SafeConnect(RunService.RenderStepped, function()
-    fovCircle.Position = UserInputService:GetMouseLocation()
-    fovCircle.Radius = Hub.Flags.AimRadius
-    fovCircle.Visible = Hub.Flags.SilentAim and Hub.Loaded
-end)
-
--- Поиск ближайшей цели к курсору в радиусе FOV
-local function GetClosestToCursor()
-    local closest, minD = nil, Hub.Flags.AimRadius
-    local mousePos = UserInputService:GetMouseLocation()
-    
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local pos, onScreen = camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
-            if onScreen then
-                local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-                if dist < minD then 
-                    minD = dist
-                    closest = p.Character 
-                end
-            end
-        end
-    end
-    return closest
-end
-
--- Принудительный Камера-Движок (Обход защиты игры на FOV и 3-е Лицо)
-RunService:BindToRenderStep("BrosaCameraControl", Enum.RenderPriority.Camera.Value + 1, function()
-    if not Hub.Loaded then return end
-    
-    if Hub.Flags.StretchToggle then
-        camera.FieldOfView = Hub.Flags.Stretch
-    end
-    
-    if Hub.Flags.ThirdPerson and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-        local root = lp.Character.HumanoidRootPart
-        camera.CameraType = Enum.CameraType.Scriptable
-        local offset = CFrame.new(0, 3, Hub.Flags.CamDist)
-        camera.CFrame = CFrame.lookAt((root.CFrame * offset).Position, root.Position)
-    elseif not Hub.Flags.ThirdPerson and camera.CameraType == Enum.CameraType.Scriptable then
-        camera.CameraType = Enum.CameraType.Custom
-    end
-end)
-
--- Логика Noclip, Anti-Grab и Кастомных Хитбоксов (Stepped — до просчета физики)
+-- Логика Noclip, Anti-Grab и Un-Grabable
 SafeConnect(RunService.Stepped, function()
     local char = lp.Character
     if not char then return end
     
-    -- Noclip
+    -- Noclip (Проход сквозь стены)
     if Hub.Flags.Noclip then
         for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then part.CanCollide = false end
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
         end
     end
     
-    -- Anti-Grab
+    -- Anti-Grab (Защита от удержания)
     if Hub.Flags.AntiGrab then
         for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then part.CanTouch = false end
+            if part:IsA("BasePart") then
+                part.CanTouch = false
+            end
         end
     end
 
-    -- Динамическое масштабирование хитбоксов (Исправленный алгоритм)
-    if Hub.Flags.CustomBoxes then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                local root = p.Character.HumanoidRootPart
-                if not Hub.Cache.Hitboxes[p.UserId] or Hub.Cache.Hitboxes[p.UserId].Parent ~= p.Character then
-                    local box = Instance.new("Part")
-                    box.Name = "BrosaHitbox"
-                    box.Size = Vector3.new(Hub.Flags.BoxSize, Hub.Flags.BoxSize, Hub.Flags.BoxSize)
-                    box.Transparency = 0.6
-                    box.Color = Color3.fromRGB(255, 0, 80)
-                    box.CanCollide = false
-                    box.Massless = true
-                    box.Parent = p.Character
-                    
-                    local weld = Instance.new("WeldConstraint")
-                    weld.Part0 = root
-                    weld.Part1 = box
-                    weld.Parent = box
-                    
-                    Hub.Cache.Hitboxes[p.UserId] = box
-                else
-                    Hub.Cache.Hitboxes[p.UserId].Size = Vector3.new(Hub.Flags.BoxSize, Hub.Flags.BoxSize, Hub.Flags.BoxSize)
+    -- Un-Grabable (Работает как флай, но ты ходишь, и тебя физически нельзя взять)
+    if Hub.Flags.UnGrabable then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanTouch = false
+            end
+            if part:IsA("Weld") or part:IsA("WeldConstraint") or part:IsA("TouchTransmitter") then
+                local other = (part.Part0 and part.Part0:IsDescendantOf(char)) and part.Part1 or part.Part0
+                if other and not other:IsDescendantOf(char) then
+                    part:Destroy()
                 end
             end
         end
-    else
-        for id, box in pairs(Hub.Cache.Hitboxes) do
-            if box then box:Destroy() end
-        end
-        table.clear(Hub.Cache.Hitboxes)
     end
 end)
 
--- Исправленный и усиленный Anti-Fling движок (Assembly Физика)
-SafeConnect(RunService.Stepped, function()
+-- Логика Anti-Fling (Фиксация угловой скорости для стабильности)
+SafeConnect(RunService.Heartbeat, function()
     local char = lp.Character
     if Hub.Flags.AntiFling and char then
         local root = char:FindFirstChild("HumanoidRootPart")
         if root then
-            -- Жесткое обнуление вращательного момента сил сторонних таранщиков
-            root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-            -- Стабилизация линейного смещения
-            local currentVel = root.AssemblyLinearVelocity
-            if currentVel.Magnitude > 120 then
-                root.AssemblyLinearVelocity = Vector3.new(0, math.clamp(currentVel.Y, -60, 60), 0)
-            end
+            root.RotVelocity = Vector3.new(0, 0, 0)
+            root.Velocity = Vector3.new(root.Velocity.X, math.clamp(root.Velocity.Y, -80, 80), root.Velocity.Z)
         end
     end
 end)
 
--- Перехват ввода: Клики (Аим + Захват) и Клавиши (Бросок под карту)
-SafeConnect(UserInputService.InputBegan, function(input, processed)
-    if processed then return end
-    
-    -- Silent Aim и Автозахват через манипуляцию CFrame хитбокса
-    if input.UserInputType == Enum.UserInputType.MouseButton1 and Hub.Flags.SilentAim then
-        local targetChar = GetClosestToCursor()
-        if targetChar and targetChar:FindFirstChild("HumanoidRootPart") then
-            local root = targetChar.HumanoidRootPart
-            local mouseHit = lp:GetMouse().Hit
-            if mouseHit then
-                local oldCFrame = root.CFrame
-                root.CFrame = CFrame.new(mouseHit.Position) -- Стягиваем цель под курсор для захвата инструментами игры
-                task.wait(0.02)
-                if mouse1click then mouse1click() end
-                task.wait(0.03)
-                root.CFrame = oldCFrame -- Возвращаем на место
-            end
-        end
-    end
-
-    -- Авто-отброс удерживаемого человека глубоко за карту (Клавиша X)
-    if input.KeyCode == Enum.KeyCode.X and Hub.Flags.AutoUnderMap then
-        local char = lp.Character
-        if not char then return end
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Weld") or obj:IsA("WeldConstraint") then
-                local p0, p1 = obj.Part0, obj.Part1
-                if p0 and p1 and (p0:IsDescendantOf(char) or p1:IsDescendantOf(char)) then
-                    local victimPart = p0:IsDescendantOf(char) and p1 or p0
-                    if victimPart and not victimPart:IsDescendantOf(char) then
-                        victimPart.CanCollide = false
-                        victimPart.AssemblyLinearVelocity = Vector3.new(0, -100000, 0) -- Критический нисходящий импульс физики
-                        obj:Destroy() -- Ломаем связку удержания
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- Логика Полета (Fly Engine v2 — Резервный расчет)
+-- Логика Полета (Fly Engine v2)
 SafeConnect(RunService.RenderStepped, function()
     local char = lp.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -317,7 +322,7 @@ SafeConnect(RunService.RenderStepped, function()
         elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
             flyVel = flyVel - Vector3.new(0, Hub.Flags.FlySpeed, 0)
         end
-        root.AssemblyLinearVelocity = flyVel
+        root.Velocity = flyVel
         root.CFrame = CFrame.new(root.Position, root.Position + camCFrame.LookVector)
     elseif hum and hum.PlatformStand and not Hub.Flags.Fly then
         hum.PlatformStand = false
@@ -347,6 +352,7 @@ local function ExecuteFling(target)
         local oldCFrame = root.CFrame
         local flingActive = true
         
+        -- Временный Noclip для флинга
         local tempNoclip = RunService.Stepped:Connect(function()
             if char then
                 for _, part in ipairs(char:GetDescendants()) do
@@ -355,10 +361,13 @@ local function ExecuteFling(target)
             end
         end)
         
+        -- Силовой контур флинга
         local flingLoop = RunService.Heartbeat:Connect(function()
-            if not tchar or not troot or not troot.Parent or not flingActive then return end
-            root.AssemblyLinearVelocity = Vector3.new(0, 150000, 0)
-            root.AssemblyAngularVelocity = Vector3.new(150000, 150000, 150000)
+            if not tchar or not troot or not troot.Parent or not flingActive then
+                return
+            end
+            root.Velocity = Vector3.new(0, 150000, 0)
+            root.RotVelocity = Vector3.new(150000, 150000, 150000)
             root.CFrame = troot.CFrame * CFrame.new(math.random(-2, 2)/10, 0, math.random(-2, 2)/10)
         end)
         
@@ -368,8 +377,8 @@ local function ExecuteFling(target)
             flingLoop:Disconnect()
             task.wait(0.1)
             if root then
-                root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                root.Velocity = Vector3.new(0, 0, 0)
+                root.RotVelocity = Vector3.new(0, 0, 0)
                 root.CFrame = oldCFrame
             end
         end)
@@ -386,14 +395,16 @@ SafeConnect(RunService.Heartbeat, function()
                 if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                     local targetRoot = player.Character.HumanoidRootPart
                     local dist = (root.Position - targetRoot.Position).Magnitude
-                    if dist <= 15 then ExecuteFling(player) end
+                    if dist <= 15 then
+                        ExecuteFling(player)
+                    end
                 end
             end
         end
     end
 end)
 
--- Click Fling (+Ctrl)
+-- Click Fling
 SafeConnect(UserInputService.InputBegan, function(input, processed)
     if not processed and Hub.Flags.ClickFling and input.UserInputType == Enum.UserInputType.MouseButton1 then
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
@@ -408,7 +419,9 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
                 local model = result.Instance:FindFirstAncestorOfClass("Model")
                 if model then
                     local clickedPlayer = Players:GetPlayerFromCharacter(model)
-                    if clickedPlayer and clickedPlayer ~= lp then ExecuteFling(clickedPlayer) end
+                    if clickedPlayer and clickedPlayer ~= lp then
+                        ExecuteFling(clickedPlayer)
+                    end
                 end
             end
         end
@@ -432,7 +445,7 @@ SafeConnect(RunService.Heartbeat, function()
                 0,
                 math.sin(orbitAngle) * Hub.Flags.OrbitDistance
             )
-            root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            root.Velocity = Vector3.new(0, 0, 0)
             root.CFrame = CFrame.new(troot.Position + offset, troot.Position)
         end
     end
@@ -524,7 +537,10 @@ local function DrawESP(player)
         local connection
         connection = RunService.RenderStepped:Connect(function()
             if not Hub.Loaded or not (Hub.Flags.ESP_Boxes or Hub.Flags.ESP_Tracers or Hub.Flags.ESP_Names or Hub.Flags.ESP_Health) then
-                box.Visible = false; tracer.Visible = false; name.Visible = false; healthBar.Visible = false
+                box.Visible = false
+                tracer.Visible = false
+                name.Visible = false
+                healthBar.Visible = false
                 return
             end
             
@@ -538,24 +554,35 @@ local function DrawESP(player)
                     local sizeY = (camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3, 0)).Y - camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.5, 0)).Y)
                     local sizeX = sizeY * 0.6
                     
+                    -- Отрисовка Бокса
                     if Hub.Flags.ESP_Boxes then
                         box.Size = Vector2.new(sizeX, sizeY)
                         box.Position = Vector2.new(rootPos.X - sizeX / 2, rootPos.Y - sizeY / 2)
+                        box.Color = Color3.fromRGB(0, 180, 255)
                         box.Visible = true
-                    else box.Visible = false end
+                    else
+                        box.Visible = false
+                    end
                     
+                    -- Отрисовка Линий (Трассеров)
                     if Hub.Flags.ESP_Tracers then
                         tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
                         tracer.To = Vector2.new(rootPos.X, rootPos.Y)
                         tracer.Visible = true
-                    else tracer.Visible = false end
+                    else
+                        tracer.Visible = false
+                    end
                     
+                    -- Отрисовка Ников
                     if Hub.Flags.ESP_Names then
                         name.Text = player.DisplayName .. " (@" .. player.Name .. ")"
                         name.Position = Vector2.new(rootPos.X, (rootPos.Y - sizeY / 2) - 15)
                         name.Visible = true
-                    else name.Visible = false end
+                    else
+                        name.Visible = false
+                    end
                     
+                    -- Отрисовка Здоровья (Healthbar)
                     if Hub.Flags.ESP_Health then
                         local healthPercent = hum.Health / hum.MaxHealth
                         local barHeight = sizeY * healthPercent
@@ -563,18 +590,32 @@ local function DrawESP(player)
                         healthBar.To = Vector2.new((rootPos.X - sizeX / 2) - 6, (rootPos.Y + sizeY / 2) - barHeight)
                         healthBar.Color = Color3.fromRGB(255 - (255 * healthPercent), 255 * healthPercent, 0)
                         healthBar.Visible = true
-                    else healthBar.Visible = false end
-                else box.Visible = false; tracer.Visible = false; name.Visible = false; healthBar.Visible = false end
-            else box.Visible = false; tracer.Visible = false; name.Visible = false; healthBar.Visible = false end
+                    else
+                        healthBar.Visible = false
+                    end
+                else
+                    box.Visible = false
+                    tracer.Visible = false
+                    name.Visible = false
+                    healthBar.Visible = false
+                end
+            else
+                box.Visible = false
+                tracer.Visible = false
+                name.Visible = false
+                healthBar.Visible = false
+            end
         end)
         table.insert(Hub.Cache.Connections, connection)
     end
+    
     task.spawn(UpdateESP)
 end
 
 Players.PlayerAdded:Connect(DrawESP)
 for _, p in ipairs(Players:GetPlayers()) do DrawESP(p) end
 
+-- Potato PC
 local function ApplyPotatoPC(state)
     Hub.Flags.PotatoPC = state
     if state then
@@ -595,253 +636,740 @@ local function ApplyPotatoPC(state)
             end
         end
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Decal") or obj:IsA("Texture") then obj.Transparency = 0 end
+            if obj:IsA("Decal") or obj:IsA("Texture") then
+                obj.Transparency = 0
+            end
         end
         table.clear(Hub.Cache.OriginalMaterials)
     end
 end
 
 -- ============================================================================
--- [4. КЛАСС И СТРУКТУРА AURORA MENU V2 — ИЗБЫТОЧНАЯ РУЧНАЯ ОТРИСОВКА]
+-- [4. ЭЛИТНЫЙ ФИЗИЧЕСКИЙ ДВИЖОК СТРОГОГО ЗАХВАТА & АИМ-ЗАХВАТА]
 -- ============================================================================
+
+-- FOV Отрисовка
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 2
+fovCircle.NumSides = 64
+fovCircle.Filled = false
+fovCircle.Visible = false
+
+-- Линия Snapline
+local snapLine = Drawing.new("Line")
+snapLine.Thickness = 2
+snapLine.Visible = false
+
+local currentGrabbedPlayer = nil
+
+-- Функция поиска ближайшего Игрока строго по центру экрана в пределах FOV
+local function getClosestPlayerInStrictFOV(maxFovRadius, maxDistance)
+    local closestTarget = nil
+    local shortestDistance = maxFovRadius
+    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local char = player.Character
+            local root = char.HumanoidRootPart
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            
+            if hum and hum.Health > 0 then
+                local myRoot = getRoot()
+                if myRoot then
+                    local distanceToMe = (root.Position - myRoot.Position).Magnitude
+                    if distanceToMe <= maxDistance then
+                        local screenPos, onScreen = camera:WorldToScreenPoint(root.Position)
+                        if onScreen then
+                            local vectorPos = Vector2.new(screenPos.X, screenPos.Y)
+                            local distFromCenter = (vectorPos - screenCenter).Magnitude
+                            if distFromCenter <= maxFovRadius and distFromCenter < shortestDistance then
+                                shortestDistance = distFromCenter
+                                closestTarget = player
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closestTarget
+end
+
+-- Обновление рендера FOV & Линии наведения
+SafeConnect(RunService.RenderStepped, function()
+    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    
+    -- Рендер FOV круга
+    if Hub.Flags.GrabAimbot and Hub.Flags.ShowFovCircle then
+        fovCircle.Visible = true
+        fovCircle.Radius = Hub.Options.GrabFovRadius
+        fovCircle.Position = screenCenter
+        fovCircle.Color = Hub.Options.GrabFovColor
+    else
+        fovCircle.Visible = false
+    end
+
+    -- Наведение Линии (Snapline)
+    if Hub.Flags.GrabAimbot and Hub.Flags.SnaplinesEnabled then
+        local target = getClosestPlayerInStrictFOV(Hub.Options.GrabFovRadius, Hub.Options.GrabMaxDistance)
+        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            local targetRoot = target.Character.HumanoidRootPart
+            local screenPos, onScreen = camera:WorldToScreenPoint(targetRoot.Position)
+            if onScreen then
+                snapLine.From = screenCenter
+                snapLine.To = Vector2.new(screenPos.X, screenPos.Y)
+                snapLine.Color = Hub.Options.LineColor
+                snapLine.Visible = true
+            else
+                snapLine.Visible = false
+            end
+        else
+            snapLine.Visible = false
+        end
+    else
+        snapLine.Visible = false
+    end
+end)
+
+-- Процесс физического удержания игрока при захвате (Дистанционный Аим захват)
+SafeConnect(RunService.Heartbeat, function()
+    if currentGrabbedPlayer and currentGrabbedPlayer.Character and currentGrabbedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local targetRoot = currentGrabbedPlayer.Character.HumanoidRootPart
+        local myRoot = getRoot()
+        if myRoot then
+            -- Удерживаем бесконтактно перед собой на расстоянии 12 студов
+            local targetCFrame = myRoot.CFrame * CFrame.new(0, 2, -12)
+            targetRoot.CFrame = targetCFrame
+            targetRoot.Velocity = Vector3.new(0, 0, 0)
+            targetRoot.RotVelocity = Vector3.new(0, 0, 0)
+        end
+    else
+        currentGrabbedPlayer = nil
+    end
+end)
+
+-- Логика Авто-Контр Захвата (Escape & Instant Kill)
+SafeConnect(RunService.Heartbeat, function()
+    if Hub.Flags.AutoCounterGrab then
+        local char = lp.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("Weld") or part:IsA("WeldConstraint") or part:IsA("Constraint") then
+                    local p0, p1 = part.Part0, part.Part1
+                    local suspectPart = (p0 and p0:IsDescendantOf(char)) and p1 or p0
+                    if suspectPart and suspectPart.Parent then
+                        local attackerModel = suspectPart:FindFirstAncestorOfClass("Model")
+                        if attackerModel and attackerModel ~= char then
+                            local attackerPlayer = Players:GetPlayerFromCharacter(attackerModel)
+                            if attackerPlayer then
+                                -- Ломаем захват
+                                part:Destroy()
+                                local hum = getHum()
+                                if hum then hum.PlatformStand = false end
+                                
+                                -- Хватаем и швыряем за карту
+                                local attRoot = attackerModel:FindFirstChild("HumanoidRootPart")
+                                if attRoot then
+                                    task.spawn(function()
+                                        -- Привязываем жестко
+                                        for i = 1, 15 do
+                                            attRoot.CFrame = getRoot().CFrame * CFrame.new(0, 4, -10)
+                                            attRoot.Velocity = Vector3.new(0, 0, 0)
+                                            task.wait()
+                                        end
+                                        -- Запуск за текстуры карты
+                                        attRoot.CFrame = attRoot.CFrame * CFrame.new(0, 30, 0)
+                                        attRoot.AssemblyLinearVelocity = (camera.CFrame.LookVector + Vector3.new(0, 8, 0)).Unit * 999999
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Собрать всех людей в круг на машине
+local function ExecuteCarGrabAll()
+    local hum = getHum()
+    if hum and hum.SeatPart and hum.SeatPart:IsA("VehicleSeat") then
+        local seat = hum.SeatPart
+        local pullPos = seat.CFrame * CFrame.new(0, 3, -15).Position -- перед машиной
+        
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local tRoot = p.Character.HumanoidRootPart
+                tRoot.CFrame = CFrame.new(pullPos)
+                tRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            end
+        end
+    else
+        StarterGui:SetCore("SendNotification", {
+            Title = "Ошибка",
+            Text = "Вы должны находиться на сиденье машины!",
+            Duration = 3
+        })
+    end
+end
+
+--============================================================
+-- КЛАСС И СТРУКТУРА AURORA MENU V2 — ИЗБЫТОЧНАЯ РУЧНАЯ ОТРИСОВКА
+--============================================================
 local Aurora = {}
 Aurora.__index = Aurora
 
-local THEME = {
-    Bg          = Color3.fromRGB(15, 16, 22),
-    BgStrong    = Color3.fromRGB(22, 24, 33),
-    Stroke      = Color3.fromRGB(0, 180, 255),
-    Text        = Color3.fromRGB(245, 245, 245),
-    TextDim     = Color3.fromRGB(140, 142, 153),
-    Accent      = Color3.fromRGB(0, 180, 255),
-    AccentGlow  = Color3.fromRGB(0, 210, 255),
-    Green       = Color3.fromRGB(0, 255, 130),
-    Red         = Color3.fromRGB(255, 75, 75)
-}
-
-local EASE = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-
-local function tween(obj, info, props)
-    local t = TweenService:Create(obj, info, props)
-    t:Play()
-    return t
-end
-
 function Aurora.new(config)
+    config = config or {}
     local self = setmetatable({}, Aurora)
+
     self.Title = config.Title or "Aurora"
-    self.SubTitle = config.SubTitle or "v2.0"
-    self.ActiveTab = nil
+    self.SubTitle = config.SubTitle or "v2.0 · подключено"
     self.Tabs = {}
-    self:BuildUI()
+    self.ActiveTab = nil
+    self.IsOpen = false
+
+    self.Gui = new("ScreenGui", {
+        Name = "AuroraMenu_Brosa",
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        IgnoreGuiInset = true,
+        Parent = CoreGui:FindFirstChild("RobloxGui") or lp:WaitForChild("PlayerGui"),
+    })
+
+    self:_buildLauncher()
+    self:_buildWindow()
+    self:_buildFloatingActionPanel()
+
     return self
 end
 
-function Aurora:BuildUI()
-    local screen = Instance.new("ScreenGui")
-    screen.Name = "AuroraPro_" .. HttpService:GenerateGUID(false):sub(1,6)
-    screen.ResetOnSpawn = false
-    screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    pcall(function() screen.Parent = CoreGui end)
-    if not screen.Parent then screen.Parent = lp:WaitForChild("PlayerGui") end
-    self.Screen = screen
+function Aurora:_buildLauncher()
+    local vp = viewportSize()
+    local launcher = new("TextButton", {
+        Name = "Launcher",
+        Text = "",
+        AutoButtonColor = false,
+        Size = UDim2.fromOffset(56, 56),
+        Position = UDim2.fromOffset(vp.X - 84, vp.Y - 200),
+        BackgroundColor3 = THEME.BgStrong,
+        BackgroundTransparency = 0.1,
+        Parent = self.Gui,
+    })
+    corner(launcher, 18)
+    stroke(launcher, THEME.Stroke, 1, 0.88)
 
-    local launcher = Instance.new("TextButton")
-    launcher.Size = UDim2.new(0, 60, 0, 60)
-    launcher.Position = UDim2.new(0.03, 0, 0.15, 0)
-    launcher.BackgroundColor3 = THEME.BgStrong
-    launcher.Text = "★"
-    launcher.TextColor3 = THEME.Accent
-    launcher.Font = Enum.Font.FredokaOne
-    launcher.TextSize = 30
-    launcher.Parent = screen
+    new("ImageLabel", {
+        Image = "rbxassetid://10723407389",
+        Size = UDim2.fromOffset(24, 24),
+        Position = UDim2.new(0.5, -12, 0.5, -12),
+        BackgroundTransparency = 1,
+        ImageColor3 = THEME.AccentB,
+        Parent = launcher,
+    })
+
+    local badge = new("Frame", {
+        Size = UDim2.fromOffset(10, 10),
+        Position = UDim2.new(1, -6, 0, -4),
+        BackgroundColor3 = THEME.AccentB,
+        Parent = launcher,
+    })
+    corner(badge, 5)
+
+    makeDraggable(launcher, launcher, {
+        Clamp = true,
+        OnEnd = function(moved)
+            if not moved then
+                if self.IsOpen then
+                    self:Minimize()
+                else
+                    self:Open()
+                end
+            end
+        end,
+    })
+
     self.Launcher = launcher
+end
 
-    local lCor = Instance.new("UICorner"); lCor.CornerRadius = UDim.new(1, 0); lCor.Parent = launcher
-    local lStroke = Instance.new("UIStroke"); lStroke.Color = THEME.Stroke; lStroke.Thickness = 2; lStroke.Parent = launcher
-    local lGrad = Instance.new("UIGradient"); lGrad.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, THEME.Accent), ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 80, 255))}); lGrad.Parent = lStroke
+function Aurora:_buildWindow()
+    local window = new("Frame", {
+        Name = "Window",
+        Size = UDim2.fromOffset(410, 490),
+        Position = UDim2.fromOffset(200, 120),
+        BackgroundColor3 = THEME.Bg,
+        BackgroundTransparency = 0.12,
+        ClipsDescendants = true,
+        Visible = false,
+        Parent = self.Gui,
+    })
+    corner(window, 26)
+    stroke(window, THEME.Stroke, 1, 0.9)
 
-    local dragStart, startPos, dragging = nil, nil, false
-    launcher.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; dragStart = input.Position; startPos = launcher.Position
-            input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+    local scale = new("UIScale", { Scale = 0.12, Parent = window })
+    self.WindowScale = scale
+    self.Window = window
+
+    -- ===== Заголовок =====
+    local header = new("Frame", { Size = UDim2.new(1, 0, 0, 52), BackgroundTransparency = 1, Parent = window })
+    new("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), BackgroundColor3 = THEME.Stroke, BackgroundTransparency = 0.92, Parent = header })
+
+    local titleWrap = new("Frame", { Size = UDim2.new(1, -84, 1, 0), Position = UDim2.fromOffset(16, 0), BackgroundTransparency = 1, Parent = header })
+    new("TextLabel", { Text = self.Title, Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = THEME.Text, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 9), BackgroundTransparency = 1, Parent = titleWrap })
+    new("TextLabel", { Text = self.SubTitle, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = THEME.TextDim, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, 28), BackgroundTransparency = 1, Parent = titleWrap })
+
+    local minimizeBtn = self:_headerIconButton(header, "—", THEME.Text, UDim2.new(1, -72, 0, 11))
+    local closeBtn    = self:_headerIconButton(header, "×", THEME.Danger, UDim2.new(1, -38, 0, 11))
+    minimizeBtn.MouseButton1Click:Connect(function() self:Minimize() end)
+    closeBtn.MouseButton1Click:Connect(function() self:CloseForever() end)
+
+    makeDraggable(header, window, { Clamp = false })
+
+    -- ===== Основная область =====
+    local mainArea = new("Frame", { Size = UDim2.new(1, 0, 1, -52), Position = UDim2.fromOffset(0, 52), BackgroundTransparency = 1, Parent = window })
+
+    local sidebar = new("Frame", {
+        Size = UDim2.new(0, 72, 1, 0),
+        BackgroundTransparency = 1,
+        Parent = mainArea,
+    })
+    new("Frame", { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), BackgroundColor3 = THEME.Stroke, BackgroundTransparency = 0.92, Parent = sidebar })
+    local sideList = new("UIListLayout", {
+        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        VerticalAlignment = Enum.VerticalAlignment.Top,
+        Padding = UDim.new(0, 6),
+        Parent = sidebar,
+    })
+    new("UIPadding", { PaddingTop = UDim.new(0, 14), Parent = sidebar })
+    self.Sidebar = sidebar
+
+    local content = new("Frame", {
+        Size = UDim2.new(1, -72, 1, 0),
+        Position = UDim2.fromOffset(72, 0),
+        BackgroundTransparency = 1,
+        Parent = mainArea,
+    })
+    self.Body = content
+end
+
+-- Панель управления на экране (Take, Throw, Zoom Out)
+function Aurora:_buildFloatingActionPanel()
+    local vp = viewportSize()
+    local panel = new("Frame", {
+        Name = "ActionPanel",
+        Size = UDim2.fromOffset(260, 75),
+        Position = UDim2.fromOffset(vp.X / 2 - 130, vp.Y - 140),
+        BackgroundColor3 = THEME.BgStrong,
+        BackgroundTransparency = 0.15,
+        Parent = self.Gui
+    })
+    corner(panel, 18)
+    stroke(panel, THEME.Stroke, 1, 0.8)
+
+    local layout = new("UIListLayout", {
+        FillDirection = Enum.FillDirection.Horizontal,
+        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        VerticalAlignment = Enum.VerticalAlignment.Center,
+        Padding = UDim.new(0, 10),
+        Parent = panel
+    })
+
+    -- Кнопка ВЗЯТЬ
+    local btnTake = new("TextButton", {
+        Text = "ВЗЯТЬ",
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        TextColor3 = THEME.Text,
+        Size = UDim2.fromOffset(70, 48),
+        BackgroundColor3 = THEME.AccentA,
+        Parent = panel
+    })
+    corner(btnTake, 12)
+    btnTake.MouseButton1Click:Connect(function()
+        if Hub.Flags.GrabAimbot then
+            local target = getClosestPlayerInStrictFOV(Hub.Options.GrabFovRadius, Hub.Options.GrabMaxDistance)
+            if target then
+                currentGrabbedPlayer = target
+                StarterGui:SetCore("SendNotification", {
+                    Title = "Захват",
+                    Text = "Захвачен игрок: " .. target.DisplayName,
+                    Duration = 2
+                })
+            else
+                StarterGui:SetCore("SendNotification", {
+                    Title = "Захват",
+                    Text = "Никого нет в зоне захвата!",
+                    Duration = 2
+                })
+            end
         end
     end)
-    launcher.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            launcher.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
 
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 620, 0, 410)
-    frame.Position = UDim2.new(0.5, -310, 0.5, -205)
-    frame.BackgroundColor3 = THEME.Bg
-    frame.ClipsDescendants = true
-    frame.Visible = false
-    frame.Parent = screen
-    self.Frame = frame
-
-    local fCor = Instance.new("UICorner"); fCor.CornerRadius = UDim.new(0, 16); fCor.Parent = frame
-    local fStroke = Instance.new("UIStroke"); fStroke.Color = THEME.Stroke; fStroke.Thickness = 2; fStroke.Parent = frame
-
-    local sidebar = Instance.new("Frame")
-    sidebar.Size = UDim2.new(0, 175, 1, 0)
-    sidebar.BackgroundColor3 = THEME.BgStrong
-    sidebar.Parent = frame
-    local sCor = Instance.new("UICorner"); sCor.CornerRadius = UDim.new(0, 16); sCor.Parent = sidebar
-
-    local headerFrame = Instance.new("Frame")
-    headerFrame.Size = UDim2.new(1, 0, 0, 70)
-    headerFrame.BackgroundTransparency = 1
-    headerFrame.Parent = sidebar
-
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -24, 0, 30)
-    title.Position = UDim2.new(0, 16, 0, 14)
-    title.Text = self.Title
-    title.TextColor3 = THEME.Text
-    title.Font = Enum.Font.FredokaOne
-    title.TextSize = 24
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.BackgroundTransparency = 1
-    title.Parent = headerFrame
-
-    local sub = Instance.new("TextLabel")
-    sub.Size = UDim2.new(1, -24, 0, 16)
-    sub.Position = UDim2.new(0, 16, 0, 38)
-    sub.Text = self.SubTitle
-    sub.TextColor3 = THEME.TextDim
-    sub.Font = Enum.Font.SourceSansBold
-    sub.TextSize = 13
-    sub.TextXAlignment = Enum.TextXAlignment.Left
-    sub.BackgroundTransparency = 1
-    sub.Parent = headerFrame
-
-    local tabList = Instance.new("ScrollingFrame")
-    tabList.Size = UDim2.new(1, 0, 1, -80)
-    tabList.Position = UDim2.new(0, 0, 0, 75)
-    tabList.BackgroundTransparency = 1
-    tabList.ScrollBarThickness = 0
-    tabList.Parent = sidebar
-    self.TabList = tabList
-
-    local tlLayout = Instance.new("UIListLayout"); tlLayout.Padding = UDim.new(0, 6); tlLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; tlLayout.Parent = tabList
-
-    local pageContainer = Instance.new("Frame")
-    pageContainer.Size = UDim2.new(1, -195, 1, -20)
-    pageContainer.Position = UDim2.new(0, 185, 0, 10)
-    pageContainer.BackgroundTransparency = 1
-    pageContainer.Parent = frame
-    self.PageContainer = pageContainer
-
-    local menuOpen = false
-    launcher.MouseButton1Click:Connect(function()
-        menuOpen = not menuOpen
-        if menuOpen then
-            frame.Size = UDim2.new(0, 0, 0, 0); frame.Position = launcher.Position; frame.Visible = true
-            tween(frame, EASE, {Size = UDim2.new(0, 620, 0, 410), Position = UDim2.new(0.5, -310, 0.5, -205)})
-            tween(launcher, EASE, {Rotation = 135, TextColor3 = THEME.Red})
+    -- Кнопка БРОСИТЬ
+    local btnThrow = new("TextButton", {
+        Text = "БРОСИТЬ",
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        TextColor3 = THEME.Text,
+        Size = UDim2.fromOffset(70, 48),
+        BackgroundColor3 = THEME.Danger,
+        Parent = panel
+    })
+    corner(btnThrow, 12)
+    btnThrow.MouseButton1Click:Connect(function()
+        if currentGrabbedPlayer and currentGrabbedPlayer.Character and currentGrabbedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local targetRoot = currentGrabbedPlayer.Character.HumanoidRootPart
+            local throwDir = camera.CFrame.LookVector
+            
+            -- Далекий бросок за карту при наведении на небо
+            if Hub.Flags.FarThrow and throwDir.Y > 0.3 then
+                targetRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 50, 0)
+                targetRoot.AssemblyLinearVelocity = (throwDir + Vector3.new(0, 6, 0)).Unit * 999999
+                StarterGui:SetCore("SendNotification", {
+                    Title = "Выброс",
+                    Text = "Игрок запущен в стратосферу!",
+                    Duration = 2
+                })
+            else
+                targetRoot.AssemblyLinearVelocity = throwDir * Hub.Options.ThrowForce
+            end
+            currentGrabbedPlayer = nil
         else
-            tween(frame, EASE, {Size = UDim2.new(0, 0, 0, 0), Position = launcher.Position})
-            tween(launcher, EASE, {Rotation = 0, TextColor3 = THEME.Accent})
-            task.wait(0.3)
-            if not menuOpen then frame.Visible = false end
+            StarterGui:SetCore("SendNotification", {
+                Title = "Ошибка",
+                Text = "Вы никого не держите!",
+                Duration = 2
+            })
         end
+    end)
+
+    -- Кнопка ОТДАЛИТЬ
+    local currentZoomIndex = 1
+    local btnZoom = new("TextButton", {
+        Text = "ОТДАЛИТЬ",
+        Font = Enum.Font.GothamBold,
+        TextSize = 10,
+        TextColor3 = THEME.Text,
+        Size = UDim2.fromOffset(70, 48),
+        BackgroundColor3 = Color3.fromRGB(50, 52, 68),
+        Parent = panel
+    })
+    corner(btnZoom, 12)
+    
+    local originalZoom = lp.CameraMaxZoomDistance
+    local originalFov = camera.FieldOfView
+    
+    btnZoom.MouseButton1Click:Connect(function()
+        if currentZoomIndex == 1 then
+            lp.CameraMaxZoomDistance = 150
+            camera.FieldOfView = 90
+            currentZoomIndex = 2
+            btnZoom.Text = "ОТДАЛИТЬ x2"
+        elseif currentZoomIndex == 2 then
+            lp.CameraMaxZoomDistance = 400
+            camera.FieldOfView = 110
+            currentZoomIndex = 3
+            btnZoom.Text = "ОТДАЛИТЬ x3"
+        else
+            lp.CameraMaxZoomDistance = originalZoom
+            camera.FieldOfView = originalFov
+            currentZoomIndex = 1
+            btnZoom.Text = "СБРОС"
+        end
+    end)
+
+    makeDraggable(panel, panel, { Clamp = true })
+    self.ActionPanel = panel
+end
+
+function Aurora:_headerIconButton(parent, glyph, color, position)
+    local btn = new("TextButton", {
+        Text = glyph, Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = color,
+        Size = UDim2.fromOffset(28, 28), Position = position,
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.95,
+        AutoButtonColor = false, Parent = parent,
+    })
+    corner(btn, 9)
+    btn.MouseEnter:Connect(function() tween(btn, FAST, { BackgroundTransparency = 0.85 }) end)
+    btn.MouseLeave:Connect(function() tween(btn, FAST, { BackgroundTransparency = 0.95 }) end)
+    return btn
+end
+
+function Aurora:Open()
+    if self.IsOpen then return end
+    self.IsOpen = true
+
+    local lpPos = self.Launcher.AbsolutePosition
+    local ls = self.Launcher.AbsoluteSize
+    local ws = self.Window.AbsoluteSize
+    local vp = viewportSize()
+
+    local targetX = math.clamp(lpPos.X + ls.X - ws.X, 8, vp.X - ws.X - 8)
+    local targetY = math.clamp(lpPos.Y + ls.Y - ws.Y, 8, vp.Y - ws.Y - 8)
+    self.Window.Position = UDim2.fromOffset(targetX, targetY)
+
+    tween(self.Launcher, FAST, { BackgroundTransparency = 1 })
+    self.Launcher.Visible = false
+    self.Window.Visible = true
+
+    self.WindowScale.Scale = 0.1
+    tween(self.WindowScale, SPRING, { Scale = 1 })
+end
+
+function Aurora:Minimize()
+    if not self.IsOpen then return end
+    self.IsOpen = false
+
+    local t = tween(self.WindowScale, EASE, { Scale = 0.08 })
+    t.Completed:Connect(function()
+        self.Window.Visible = false
+        self.Launcher.Visible = true
+        self.Launcher.BackgroundTransparency = 1
+        tween(self.Launcher, EASE, { BackgroundTransparency = 0.1 })
+        self:_popLauncher()
+    end)
+end
+
+function Aurora:_popLauncher()
+    local orig = self.Launcher.Size
+    self.Launcher.Size = UDim2.fromOffset(orig.X.Offset * 0.6, orig.Y.Offset * 0.6)
+    tween(self.Launcher, SPRING, { Size = orig })
+end
+
+function Aurora:CloseForever()
+    local t = tween(self.WindowScale, EASE, { Scale = 0.05 })
+    tween(self.Window, EASE, { BackgroundTransparency = 1 })
+    t.Completed:Connect(function()
+        local lt = tween(self.Launcher, EASE, { BackgroundTransparency = 1 })
+        lt.Completed:Connect(function()
+            self.Gui:Destroy()
+        end)
     end)
 end
 
 function Aurora:CreateTab(name)
-    local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.BackgroundTransparency = 1
-    page.ScrollBarThickness = 4
-    page.ScrollBarImageColor3 = THEME.Accent
-    page.Visible = false
-    page.Parent = self.PageContainer
+    local page = new("ScrollingFrame", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 3,
+        ScrollBarImageTransparency = 0.6,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false,
+        Parent = self.Body,
+    })
+    new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 14), Parent = page })
+    local layout = new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = page })
 
-    local pLayout = Instance.new("UIListLayout"); pLayout.Padding = UDim.new(0, 10); pLayout.Parent = page
-    pLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        page.CanvasSize = UDim2.new(0, 0, 0, pLayout.AbsoluteContentSize.Y + 20)
-    end)
+    local tabBtn = new("TextButton", {
+        Text = "", AutoButtonColor = false,
+        Size = UDim2.fromOffset(56, 56),
+        BackgroundTransparency = 1,
+        Parent = self.Sidebar,
+    })
+    corner(tabBtn, 16)
+    new("TextLabel", {
+        Text = name, Font = Enum.Font.GothamBold, TextSize = 8,
+        TextColor3 = THEME.TextDim,
+        Size = UDim2.new(1, 0, 1, 0),
+        TextWrapped = true,
+        BackgroundTransparency = 1,
+        Parent = tabBtn,
+    })
 
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9, 0, 0, 38)
-    btn.BackgroundColor3 = THEME.Bg; btn.BackgroundTransparency = 1; btn.Text = ""; btn.AutoButtonColor = false; btn.Parent = self.TabList
-    local bCor = Instance.new("UICorner"); bCor.CornerRadius = UDim.new(0, 8); bCor.Parent = btn
+    local tabData = { Name = name, Page = page, Button = tabBtn, Label = tabBtn:FindFirstChildOfClass("TextLabel"), Order = 0 }
+    table.insert(self.Tabs, tabData)
 
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -16, 1, 0); lbl.Position = UDim2.new(0, 16, 0, 0); lbl.Text = name; lbl.TextColor3 = THEME.TextDim; lbl.Font = Enum.Font.SourceSansBold; lbl.TextSize = 15; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.Parent = btn
+    tabBtn.MouseButton1Click:Connect(function() self:_selectTab(tabData) end)
+    if not self.ActiveTab then self:_selectTab(tabData) end
 
-    local tabData = {Page = page, Button = btn, Label = lbl}
-    btn.MouseButton1Click:Connect(function() self:SelectTab(tabData) end)
-    if not self.ActiveTab then self:SelectTab(tabData) end
-
-    local TabAPI = {Page = page}
-
-    function TabAPI:AddSection(title)
-        local sec = Instance.new("TextLabel")
-        sec.Size = UDim2.new(0.95, 0, 0, 28); sec.Text = title:upper(); sec.TextColor3 = THEME.AccentGlow; sec.Font = Enum.Font.SourceSansBold; sec.TextSize = 13; sec.TextXAlignment = Enum.TextXAlignment.Left; sec.BackgroundTransparency = 1; sec.Parent = page
+    local api = { _order = 0 }
+    local function nextOrder()
+        api._order = api._order + 1
+        return api._order
     end
 
-    function TabAPI:AddToggle(config)
-        local card = Instance.new("Frame")
-        card.Size = UDim2.new(0.95, 0, 0, 52); card.BackgroundColor3 = THEME.BgStrong; card.Parent = page
-        local cCor = Instance.new("UICorner"); cCor.CornerRadius = UDim.new(0, 10); cCor.Parent = card
-        local cStroke = Instance.new("UIStroke"); cStroke.Color = Color3.fromRGB(35, 38, 50); cStroke.Thickness = 1; cStroke.Parent = card
+    function api:AddSection(title)
+        local label = new("TextLabel", {
+            Text = string.upper(title),
+            Font = Enum.Font.GothamBold,
+            TextSize = 11,
+            TextColor3 = THEME.TextDim,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Size = UDim2.new(1, 0, 0, 20),
+            BackgroundTransparency = 1,
+            LayoutOrder = nextOrder(),
+            Parent = page,
+        })
+        return label
+    end
 
-        local cl = Instance.new("TextLabel")
-        cl.Size = UDim2.new(0.7, 0, 0, 26); cl.Position = UDim2.new(0, 14, 0, 4); cl.Text = config.Name; cl.TextColor3 = THEME.Text; cl.Font = Enum.Font.SourceSansBold; cl.TextSize = 16; cl.TextXAlignment = Enum.TextXAlignment.Left; cl.BackgroundTransparency = 1; card.Active = true; cl.Parent = card
+    function api:AddToggle(opts)
+        opts = opts or {}
+        local state = opts.Default or false
 
-        local cd = Instance.new("TextLabel")
-        cd.Size = UDim2.new(0.7, 0, 0, 18); cd.Position = UDim2.new(0, 14, 0, 26); cd.Text = config.Description or ""; cd.TextColor3 = THEME.TextDim; cd.Font = Enum.Font.SourceSans; cd.TextSize = 12; cd.TextXAlignment = Enum.TextXAlignment.Left; cd.BackgroundTransparency = 1; cd.Parent = card
+        local row = new("Frame", {
+            Size = UDim2.new(1, 0, 0, 58),
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 0.965,
+            LayoutOrder = nextOrder(),
+            Parent = page,
+        })
+        corner(row, 16)
+        local rStroke = stroke(row, THEME.AccentA, 1, 0.65)
 
-        local switch = Instance.new("TextButton")
-        switch.Size = UDim2.new(0, 46, 0, 24); switch.Position = UDim2.new(0.95, -46, 0.5, -12); switch.BackgroundColor3 = Color3.fromRGB(50, 52, 68); switch.Text = ""; switch.Parent = card
-        local sCor = Instance.new("UICorner"); sCor.CornerRadius = UDim.new(1, 0); sCor.Parent = switch
+        new("Frame", { Size = UDim2.fromOffset(34, 34), Position = UDim2.fromOffset(12, 12), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.94, Parent = row }).Name = "Icon"
+        corner(row.Icon, 10)
 
-        local dot = Instance.new("Frame")
-        dot.Size = UDim2.new(0, 18, 0, 18); dot.Position = UDim2.new(0, 3, 0.5, -9); dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255); dot.Parent = switch
-        local dCor = Instance.new("UICorner"); dCor.CornerRadius = UDim.new(1, 0); dCor.Parent = dot
+        new("TextLabel", { Text = opts.Name or "Функция", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = THEME.Text, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, -110, 0, 16), Position = UDim2.fromOffset(56, 12), BackgroundTransparency = 1, Parent = row })
+        new("TextLabel", { Text = opts.Description or "", Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = THEME.TextDim, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, -110, 0, 14), Position = UDim2.fromOffset(56, 30), BackgroundTransparency = 1, Parent = row })
 
-        local state = config.Default or false
-        local function toggle(targetState)
-            state = targetState
+        local switch = new("Frame", { Size = UDim2.fromOffset(44, 26), Position = UDim2.new(1, -56, 0.5, -13), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.85, Parent = row })
+        corner(switch, 13)
+        local knob = new("Frame", { Size = UDim2.fromOffset(20, 20), Position = UDim2.fromOffset(3, 3), BackgroundColor3 = Color3.fromRGB(255, 255, 255), Parent = switch })
+        corner(knob, 10)
+
+        local hitbox = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Parent = row })
+
+        local function render(animated)
+            local info = animated and SPRING or TweenInfo.new(0)
             if state then
-                tween(switch, TweenInfo.new(0.2), {BackgroundColor3 = THEME.Accent})
-                tween(dot, TweenInfo.new(0.2), {Position = UDim2.new(1, -21, 0.5, -9)})
+                tween(switch, EASE, { BackgroundColor3 = THEME.AccentA, BackgroundTransparency = 0 })
+                tween(knob, info, { Position = UDim2.fromOffset(21, 3) })
+                tween(rStroke, EASE, { Transparency = 0.35 })
             else
-                tween(switch, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 52, 68)})
-                tween(dot, TweenInfo.new(0.2), {Position = UDim2.new(0, 3, 0.5, -9)})
+                tween(switch, EASE, { BackgroundTransparency = 0.85 })
+                tween(knob, info, { Position = UDim2.fromOffset(3, 3) })
+                tween(rStroke, EASE, { Transparency = 0.65 })
             end
-            pcall(config.Callback, state)
         end
+        render(false)
 
-        toggle(state)
-        switch.MouseButton1Click:Connect(function() toggle(not state) end)
+        hitbox.MouseButton1Click:Connect(function()
+            state = not state
+            render(true)
+            if opts.Callback then task.spawn(opts.Callback, state) end
+        end)
+
+        return { Set = function(_, v) state = v; render(true) end, Get = function() return state end }
     end
 
-    function TabAPI:AddSlider(config)
-        local card = Instance.new("Frame")
-        card.Size = UDim2.new(0.95, 0, 0, 60); card.BackgroundColor3 = THEME.BgStrong; card.Parent = page
-        local cCor = Instance.new("UICorner"); cCor.CornerRadius = UDim.new(0, 10); cCor.Parent = card
-        local cStroke = Instance.new("UIStroke"); cStroke.Color = Color3.fromRGB(35, 38, 50); cStroke.Thickness = 1; cStroke.Parent = card
+    function api:AddToggleWithSettings(opts)
+        opts = opts or {}
+        local state = opts.Default or false
+        local expanded = false
 
-        local cl = Instance.new("TextLabel")
-        cl.Size = UDim2.new(0.7, 0, 0, 24); cl.Position = UDim2.new(0, 14, 0, 6); cl.Text = config.Name; cl.TextColor3 = THEME.Text; cl.Font = Enum.Font.SourceSansBold; cl.TextSize = 15; cl.TextXAlignment = Enum.TextXAlignment.Left; cl.BackgroundTransparency = 1; cl.Parent = card
+        local container = new("Frame", {
+            Size = UDim2.new(1, 0, 0, 58),
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 0.965,
+            ClipsDescendants = true,
+            LayoutOrder = nextOrder(),
+            Parent = page,
+        })
+        corner(container, 16)
+        local cStroke = stroke(container, THEME.AccentA, 1, 0.65)
 
-        local valLbl = Instance.new("TextLabel")
-        valLbl.Size = UDim2.new(0.25, 0, 0, 24); valLbl.Position = UDim2.new(0.7, 0, 0, 6); valLbl.Text = tostring(config.Default); valLbl.TextColor3 = THEME.AccentGlow; valLbl.Font = Enum.Font.FredokaOne; valLbl.TextSize = 15; valLbl.TextXAlignment = Enum.TextXAlignment.Right; valLbl.BackgroundTransparency = 1; valLbl.Parent = card
+        local row = new("Frame", { Size = UDim2.new(1, 0, 0, 58), BackgroundTransparency = 1, Parent = container })
+        new("TextLabel", { Text = opts.Name or "Функция", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = THEME.Text, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, -50, 0, 16), Position = UDim2.fromOffset(16, 12), BackgroundTransparency = 1, Parent = row })
+        new("TextLabel", { Text = opts.Description or "Нажми, чтобы открыть настройки", Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = THEME.TextDim, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, -50, 0, 14), Position = UDim2.fromOffset(16, 30), BackgroundTransparency = 1, Parent = row })
+        local chevron = new("TextLabel", { Text = "v", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = THEME.TextDim, Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -34, 0.5, -10), BackgroundTransparency = 1, Parent = row })
 
-        local bar = Instance.new("TextButton")
-        bar.Size = UDim2.new(0.92, 0, 0, 8); bar.Position = UDim2.new(0.04, 0, 0.72, 0); bar.BackgroundColor3 = Color3.fromRGB(45, 48, 62); bar.Text = ""; bar.Parent = card
-        local bCor = Instance.new("UICorner"); bCor.CornerRadius = UDim.new(1, 0); bCor.Parent = bar
+        local settingsWrap = new("Frame", { Size = UDim2.new(1, -32, 0, 70), Position = UDim2.fromOffset(16, 62), BackgroundTransparency = 1, Parent = container })
+        local sliderValue = opts.SliderDefault or 50
+        local sliderLabel = new("TextLabel", { Text = (opts.SliderLabel or "Интенсивность") .. ": " .. sliderValue, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = THEME.TextDim, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 14), Parent = settingsWrap })
+        local sliderTrack = new("Frame", { Size = UDim2.new(1, 0, 0, 4), Position = UDim2.fromOffset(0, 20), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.85, Parent = settingsWrap })
+        corner(sliderTrack, 2)
+        local sliderFill = new("Frame", { Size = UDim2.new(sliderValue / opts.SliderMax, 0, 1, 0), BackgroundColor3 = THEME.AccentA, Parent = sliderTrack })
+        gradient(sliderFill, 0)
+        corner(sliderFill, 2)
+        local sliderKnob = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(16, 16), Position = UDim2.new(sliderValue / opts.SliderMax, -8, 0.5, -8), BackgroundColor3 = Color3.fromRGB(255, 255, 255), Parent = sliderTrack })
+        corner(sliderKnob, 8)
 
-        local fill = Instance.new("Frame")
-        fill.Size = UDim2.new((config.Default - config.Min)/(config.Max - config.Min), 0, 1, 0); fill.BackgroundColor3 = THEME.Accent; fill.Parent = bar
-        local fCor = Instance.new("UICorner"); fCor.CornerRadius = UDim.new(1, 0); fCor.Parent = fill
+        local draggingSlider = false
+        sliderKnob.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingSlider = true end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingSlider = false end
+        end)
+        RunService.RenderStepped:Connect(function()
+            if not draggingSlider then return end
+            local mouse = UserInputService:GetMouseLocation()
+            local relX = math.clamp((mouse.X - sliderTrack.AbsolutePosition.X) / sliderTrack.AbsoluteSize.X, 0, 1)
+            sliderValue = math.floor(opts.SliderMin + relX * (opts.SliderMax - opts.SliderMin))
+            sliderFill.Size = UDim2.new(relX, 0, 1, 0)
+            sliderKnob.Position = UDim2.new(relX, -8, 0.5, -8)
+            sliderLabel.Text = (opts.SliderLabel or "Интенсивность") .. ": " .. sliderValue
+            if opts.OnSlider then task.spawn(opts.OnSlider, sliderValue) end
+        end)
+
+        local hitbox = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 58), BackgroundTransparency = 1, Parent = row })
+        hitbox.MouseButton1Click:Connect(function()
+            expanded = not expanded
+            state = expanded
+            local targetHeight = expanded and 140 or 58
+            tween(container, EASE, { Size = UDim2.new(1, 0, 0, targetHeight) })
+            tween(chevron, SPRING, { Rotation = expanded and 180 or 0 })
+            tween(cStroke, EASE, { Transparency = expanded and 0.35 or 0.65 })
+            if opts.Callback then task.spawn(opts.Callback, state) end
+        end)
+
+        return { GetSlider = function() return sliderValue end, IsExpanded = function() return expanded end }
+    end
+
+    function api:AddSlider(config)
+        local card = new("Frame", {
+            Size = UDim2.new(1, 0, 0, 60),
+            BackgroundColor3 = THEME.BgStrong,
+            LayoutOrder = nextOrder(),
+            Parent = page
+        })
+        corner(card, 10)
+        stroke(card, Color3.fromRGB(35, 38, 50), 1, 0.8)
+
+        local cl = new("TextLabel", {
+            Size = UDim2.new(0.7, 0, 0, 24),
+            Position = UDim2.fromOffset(14, 6),
+            Text = config.Name,
+            TextColor3 = THEME.Text,
+            Font = Enum.Font.SourceSansBold,
+            TextSize = 15,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            BackgroundTransparency = 1,
+            Parent = card
+        })
+
+        local valLbl = new("TextLabel", {
+            Size = UDim2.new(0.25, 0, 0, 24),
+            Position = UDim2.new(0.7, 0, 0, 6),
+            Text = tostring(config.Default),
+            TextColor3 = THEME.AccentA,
+            Font = Enum.Font.FredokaOne,
+            TextSize = 15,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            BackgroundTransparency = 1,
+            Parent = card
+        })
+
+        local bar = new("TextButton", {
+            Size = UDim2.new(0.92, 0, 0, 8),
+            Position = UDim2.new(0.04, 0, 0.72, 0),
+            BackgroundColor3 = Color3.fromRGB(45, 48, 62),
+            Text = "",
+            Parent = card
+        })
+        corner(bar, 4)
+
+        local fill = new("Frame", {
+            Size = UDim2.new((config.Default - config.Min)/(config.Max - config.Min), 0, 1, 0),
+            BackgroundColor3 = THEME.AccentA,
+            Parent = bar
+        })
+        corner(fill, 4)
 
         local sliding = false
         local function updateVal(input)
@@ -854,7 +1382,8 @@ function Aurora:CreateTab(name)
 
         bar.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                sliding = true; updateVal(input)
+                sliding = true
+                updateVal(input)
             end
         end)
         SafeConnect(UserInputService.InputChanged, function(input)
@@ -863,58 +1392,230 @@ function Aurora:CreateTab(name)
             end
         end)
         bar.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then sliding = false end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                sliding = false
+            end
         end)
     end
 
-    function TabAPI:AddTextBox(config)
-        local card = Instance.new("Frame")
-        card.Size = UDim2.new(0.95, 0, 0, 52); card.BackgroundColor3 = THEME.BgStrong; card.Parent = page
-        local cCor = Instance.new("UICorner"); cCor.CornerRadius = UDim.new(0, 10); cCor.Parent = card
-        local cStroke = Instance.new("UIStroke"); cStroke.Color = Color3.fromRGB(35, 38, 50); cStroke.Thickness = 1; cStroke.Parent = card
+    function api:AddTextBox(config)
+        local card = new("Frame", {
+            Size = UDim2.new(1, 0, 0, 52),
+            BackgroundColor3 = THEME.BgStrong,
+            LayoutOrder = nextOrder(),
+            Parent = page
+        })
+        corner(card, 10)
+        stroke(card, Color3.fromRGB(35, 38, 50), 1, 0.8)
 
-        local cl = Instance.new("TextLabel")
-        cl.Size = UDim2.new(0.4, 0, 1, 0); cl.Position = UDim2.new(0, 14, 0, 0); cl.Text = config.Name; cl.TextColor3 = THEME.Text; cl.Font = Enum.Font.SourceSansBold; cl.TextSize = 15; cl.TextXAlignment = Enum.TextXAlignment.Left; cl.BackgroundTransparency = 1; cl.Parent = card
+        local cl = new("TextLabel", {
+            Size = UDim2.new(0.4, 0, 1, 0),
+            Position = UDim2.fromOffset(14, 0),
+            Text = config.Name,
+            TextColor3 = THEME.Text,
+            Font = Enum.Font.SourceSansBold,
+            TextSize = 15,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            BackgroundTransparency = 1,
+            Parent = card
+        })
 
-        local box = Instance.new("TextBox")
-        box.Size = UDim2.new(0.52, 0, 0.7, 0); box.Position = UDim2.new(0.44, 0, 0.15, 0); box.BackgroundColor3 = THEME.Bg; box.Text = config.Default or ""; box.TextColor3 = THEME.Text; box.PlaceholderText = config.Placeholder or "Ввод..."; box.PlaceholderColor3 = THEME.TextDim; box.Font = Enum.Font.SourceSansSemibold; box.TextSize = 14; box.ClipsDescendants = true; box.Parent = card
-        local bCor = Instance.new("UICorner"); bCor.CornerRadius = UDim.new(0, 8); bCor.Parent = box
-        local bStroke = Instance.new("UIStroke"); bStroke.Color = Color3.fromRGB(50, 52, 70); bStroke.Thickness = 1; bStroke.Parent = box
+        local box = new("TextBox", {
+            Size = UDim2.new(0.52, 0, 0.7, 0),
+            Position = UDim2.new(0.44, 0, 0.15, 0),
+            BackgroundColor3 = THEME.Bg,
+            Text = config.Default or "",
+            TextColor3 = THEME.Text,
+            PlaceholderText = config.Placeholder or "Ввод...",
+            PlaceholderColor3 = THEME.TextDim,
+            Font = Enum.Font.SourceSansSemibold,
+            TextSize = 14,
+            ClipsDescendants = true,
+            Parent = card
+        })
+        corner(box, 8)
+        stroke(box, Color3.fromRGB(50, 52, 70), 1, 0.8)
 
-        box.FocusLost:Connect(function() pcall(config.Callback, box.Text) end)
+        box.FocusLost:Connect(function()
+            pcall(config.Callback, box.Text)
+        end)
     end
 
-    function TabAPI:AddButton(config)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0.95, 0, 0, 42); btn.BackgroundColor3 = THEME.Accent; btn.Text = config.Name; btn.TextColor3 = Color3.fromRGB(255, 255, 255); btn.Font = Enum.Font.SourceSansBold; btn.TextSize = 16; btn.Parent = page
-        local bCor = Instance.new("UICorner"); bCor.CornerRadius = UDim.new(0, 10); bCor.Parent = btn
-        local bGrad = Instance.new("UIGradient"); bGrad.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, THEME.Accent), ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 130, 255))}); bGrad.Parent = btn
+    function api:AddButton(config)
+        local btn = new("TextButton", {
+            Size = UDim2.new(1, 0, 0, 42),
+            BackgroundColor3 = THEME.AccentA,
+            Text = config.Name,
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            Font = Enum.Font.SourceSansBold,
+            TextSize = 16,
+            LayoutOrder = nextOrder(),
+            Parent = page
+        })
+        corner(btn, 10)
+        gradient(btn, 0)
 
-        btn.MouseButton1Click:Connect(function() pcall(config.Callback) end)
+        btn.MouseButton1Click:Connect(function()
+            pcall(config.Callback)
+        end)
     end
 
-    return TabAPI
+    function api:AddProfileCard()
+        local hero = new("Frame", { Size = UDim2.new(1, 0, 0, 150), BackgroundTransparency = 1, LayoutOrder = nextOrder(), Parent = page })
+
+        local avatar = new("ImageLabel", { Size = UDim2.fromOffset(78, 78), Position = UDim2.new(0.5, -39, 0, 6), BackgroundColor3 = THEME.AccentA, Parent = hero })
+        corner(avatar, 22)
+        gradient(avatar, 135)
+
+        task.spawn(function()
+            local ok, content = pcall(function()
+                return Players:GetUserThumbnailAsync(lp.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size180x180)
+            end)
+            if ok and content then avatar.Image = content end
+        end)
+
+        new("TextLabel", { Text = lp.DisplayName, Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = THEME.Text, Size = UDim2.new(1, 0, 0, 20), Position = UDim2.fromOffset(0, 90), BackgroundTransparency = 1, Parent = hero })
+        new("TextLabel", { Text = "@" .. lp.Name .. " · ID " .. lp.UserId, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = THEME.TextDim, Size = UDim2.new(1, 0, 0, 16), Position = UDim2.fromOffset(0, 112), BackgroundTransparency = 1, Parent = hero })
+
+        local stats = new("Frame", { Size = UDim2.new(1, 0, 0, 60), LayoutOrder = nextOrder(), BackgroundTransparency = 1, Parent = page })
+        new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), Parent = stats })
+
+        local function statChip(value, label)
+            local chip = new("Frame", { Size = UDim2.new(0.333, -6, 1, 0), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.96, Parent = stats })
+            corner(chip, 14)
+            new("TextLabel", { Text = tostring(value), Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = THEME.Text, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 10), BackgroundTransparency = 1, Parent = chip })
+            new("TextLabel", { Text = label, Font = Enum.Font.Gotham, TextSize = 9, TextColor3 = THEME.TextDim, Size = UDim2.new(1, 0, 0, 12), Position = UDim2.fromOffset(0, 30), BackgroundTransparency = 1, Parent = chip })
+        end
+
+        local accountAge = lp.AccountAge or 0
+        statChip("Online", "Статус")
+        statChip(math.floor(accountAge / 365), "Лет в Roblox")
+        statChip(lp.UserId, "ID")
+    end
+
+    return api
 end
 
-function Aurora:SelectTab(tabData)
+function Aurora:_selectTab(tabData)
     if self.ActiveTab then
         self.ActiveTab.Page.Visible = false
-        tween(self.ActiveTab.Button, EASE, {BackgroundTransparency = 1})
-        tween(self.ActiveTab.Label, EASE, {TextColor3 = THEME.TextDim})
+        tween(self.ActiveTab.Button, EASE, { BackgroundTransparency = 1 })
+        tween(self.ActiveTab.Label, EASE, { TextColor3 = THEME.TextDim })
     end
     self.ActiveTab = tabData
     tabData.Page.Visible = true
-    tween(tabData.Button, EASE, {BackgroundTransparency = 0.90})
-    tween(tabData.Label, EASE, {TextColor3 = THEME.Text})
+    tween(tabData.Button, EASE, { BackgroundTransparency = 0.92 })
+    tween(tabData.Label, EASE, { TextColor3 = THEME.Text })
 end
 
-local menu = Aurora.new({ Title = "Brosa System", SubTitle = "v5.5 • Hybrid Monolith" })
+-- Инициализация графического интерфейса Aurora V2
+local menu = Aurora.new({ Title = "Brosa System", SubTitle = "v5.5 · Private Hybrid Hub" })
 
 -- ============================================================================
--- [5. НАПОЛНЕНИЕ ВКЛАДОК СЕТОМ ОПЦИЙ (ВСЕ СТАРЫЕ + НОВЫЕ СЕКЦИИ)]
+-- [5. НАПОЛНЕНИЕ ВКЛАДОК СЕТОМ ОПЦИЙ (БЕЗ УРЕЗАНИЯ)]
 -- ============================================================================
 
--- --- ВКЛАДКА: ДВИЖЕНИЕ ---
+-- Вкладка: ЗАХВАТ & АИМ (Новая специализированная вкладка!)
+local tabGrab = menu:CreateTab("Захват")
+tabGrab:AddSection("Основные системы захвата")
+
+tabGrab:AddToggle({
+    Name = "Аимбот захват",
+    Description = "Активирует аим-круг и захват кнопкой",
+    Default = Hub.Flags.GrabAimbot,
+    Callback = function(state)
+        Hub.Flags.GrabAimbot = state
+    end
+})
+
+tabGrab:AddToggle({
+    Name = "Показывать прицел круг",
+    Description = "Отображает сильный прицельный FOV круг на экране",
+    Default = Hub.Flags.ShowFovCircle,
+    Callback = function(state)
+        Hub.Flags.ShowFovCircle = state
+    end
+})
+
+tabGrab:AddToggle({
+    Name = "Далекий бросок",
+    Description = "Выброс за карту, если при броске навести на небо",
+    Default = Hub.Flags.FarThrow,
+    Callback = function(state)
+        Hub.Flags.FarThrow = state
+    end
+})
+
+tabGrab:AddToggle({
+    Name = "Линия от прицела",
+    Description = "Линия наведения от центра экрана к цели",
+    Default = Hub.Flags.SnaplinesEnabled,
+    Callback = function(state)
+        Hub.Flags.SnaplinesEnabled = state
+    end
+})
+
+tabGrab:AddToggle({
+    Name = "Неудержимый (Иммунитет)",
+    Description = "Тебя никто не может взять. Работает на ходу",
+    Default = Hub.Flags.UnGrabable,
+    Callback = function(state)
+        Hub.Flags.UnGrabable = state
+    end
+})
+
+tabGrab:AddToggle({
+    Name = "Авто-Ответный Захват",
+    Description = "Авто-выход из чужого захвата и моментальный вылет врага за карту",
+    Default = Hub.Flags.AutoCounterGrab,
+    Callback = function(state)
+        Hub.Flags.AutoCounterGrab = state
+    end
+})
+
+tabGrab:AddSection("Настройки аима")
+
+tabGrab:AddSlider({
+    Name = "Ширина круга захвата",
+    Min = 50,
+    Max = 600,
+    Default = Hub.Options.GrabFovRadius,
+    Callback = function(val)
+        Hub.Options.GrabFovRadius = val
+    end
+})
+
+tabGrab:AddSlider({
+    Name = "Дальность захвата",
+    Min = 50,
+    Max = 1000,
+    Default = Hub.Options.GrabMaxDistance,
+    Callback = function(val)
+        Hub.Options.GrabMaxDistance = val
+    end
+})
+
+tabGrab:AddSlider({
+    Name = "Сила броска",
+    Min = 100,
+    Max = 9000,
+    Default = Hub.Options.ThrowForce,
+    Callback = function(val)
+        Hub.Options.ThrowForce = val
+    end
+})
+
+tabGrab:AddSection("Машины (Для сидений)")
+
+tabGrab:AddButton({
+    Name = "Собрать всех в круг (В машине)",
+    Callback = function()
+        ExecuteCarGrabAll()
+    end
+})
+
+
+-- Вкладка: ДВИЖЕНИЕ
 local tabMovement = menu:CreateTab("Движение")
 tabMovement:AddSection("Физические Характеристики")
 
@@ -924,17 +1625,24 @@ tabMovement:AddToggle({
     Default = Hub.Flags.WalkSpeedEnabled,
     Callback = function(state)
         Hub.Flags.WalkSpeedEnabled = state
-        if state then pcall(function() lp.Character.Humanoid.WalkSpeed = Hub.Flags.WalkSpeedValue end)
-        else pcall(function() lp.Character.Humanoid.WalkSpeed = 16 end) end
+        if state then
+            pcall(function() lp.Character.Humanoid.WalkSpeed = Hub.Flags.WalkSpeedValue end)
+        else
+            pcall(function() lp.Character.Humanoid.WalkSpeed = 16 end)
+        end
     end
 })
 
 tabMovement:AddSlider({
     Name = "Скорость перемещения",
-    Min = 16, Max = 350, Default = Hub.Flags.WalkSpeedValue,
+    Min = 16,
+    Max = 350,
+    Default = Hub.Flags.WalkSpeedValue,
     Callback = function(val)
         Hub.Flags.WalkSpeedValue = val
-        if Hub.Flags.WalkSpeedEnabled then pcall(function() lp.Character.Humanoid.WalkSpeed = val end) end
+        if Hub.Flags.WalkSpeedEnabled then
+            pcall(function() lp.Character.Humanoid.WalkSpeed = val end)
+        end
     end
 })
 
@@ -944,99 +1652,219 @@ tabMovement:AddToggle({
     Default = Hub.Flags.JumpPowerEnabled,
     Callback = function(state)
         Hub.Flags.JumpPowerEnabled = state
-        if state then pcall(function() lp.Character.Humanoid.JumpPower = Hub.Flags.JumpPowerValue end)
-        else pcall(function() lp.Character.Humanoid.JumpPower = 50 end) end
+        if state then
+            pcall(function() lp.Character.Humanoid.JumpPower = Hub.Flags.JumpPowerValue end)
+        else
+            pcall(function() lp.Character.Humanoid.JumpPower = 50 end)
+        end
     end
 })
 
 tabMovement:AddSlider({
     Name = "Сила прыжка",
-    Min = 50, Max = 500, Default = Hub.Flags.JumpPowerValue,
+    Min = 50,
+    Max = 500,
+    Default = Hub.Flags.JumpPowerValue,
     Callback = function(val)
         Hub.Flags.JumpPowerValue = val
-        if Hub.Flags.JumpPowerEnabled then pcall(function() lp.Character.Humanoid.JumpPower = val end) end
+        if Hub.Flags.JumpPowerEnabled then
+            pcall(function() lp.Character.Humanoid.JumpPower = val end)
+        end
     end
 })
 
 tabMovement:AddSection("Супер-Способности")
-tabMovement:AddToggle({ Name = "Бесконечный Прыжок", Description = "Прыгайте по невидимым уступам в воздухе", Default = Hub.Flags.InfiniteJump, Callback = function(state) Hub.Flags.InfiniteJump = state end })
-tabMovement:AddToggle({ Name = "Режим полета (Fly)", Description = "Перемещение в стиле наблюдателя", Default = Hub.Flags.Fly, Callback = function(state) Hub.Flags.Fly = state end })
-tabMovement:AddSlider({ Name = "Скорость полета", Min = 10, Max = 350, Default = Hub.Flags.FlySpeed, Callback = function(val) Hub.Flags.FlySpeed = val end })
-tabMovement:AddToggle({ Name = "Noclip (Сквозь стены)", Description = "Отключает коллизию вашего тела", Default = Hub.Flags.Noclip, Callback = function(state) Hub.Flags.Noclip = state end })
+
+tabMovement:AddToggle({
+    Name = "Бесконечный Прыжок",
+    Description = "Прыгайте по невидимым уступам в воздухе",
+    Default = Hub.Flags.InfiniteJump,
+    Callback = function(state)
+        Hub.Flags.InfiniteJump = state
+    end
+})
+
+tabMovement:AddToggle({
+    Name = "Режим полета (Fly)",
+    Description = "Перемещение в стиле наблюдателя",
+    Default = Hub.Flags.Fly,
+    Callback = function(state)
+        Hub.Flags.Fly = state
+    end
+})
+
+tabMovement:AddSlider({
+    Name = "Скорость полета",
+    Min = 10,
+    Max = 350,
+    Default = Hub.Flags.FlySpeed,
+    Callback = function(val)
+        Hub.Flags.FlySpeed = val
+    end
+})
+
+tabMovement:AddToggle({
+    Name = "Noclip (Проход сквозь стены)",
+    Description = "Отключает коллизию всех частей вашего тела",
+    Default = Hub.Flags.Noclip,
+    Callback = function(state)
+        Hub.Flags.Noclip = state
+    end
+})
 
 
--- --- ВКЛАДКА: ТРОЛЛИНГ ---
+-- Вкладка: ВРЕДИТЕЛЬСТВО
 local tabTroll = menu:CreateTab("Троллинг")
-
-tabTroll:AddSection("Аим и Захват (Новые фиксы)")
-tabTroll:AddToggle({
-    Name = "Silent Aim + Нативный захват",
-    Description = "Телепортирует хитбокс под мышь при клике",
-    Default = Hub.Flags.SilentAim,
-    Callback = function(state) Hub.Flags.SilentAim = state end
-})
-tabTroll:AddSlider({
-    Name = "Радиус захвата Аима (FOV)",
-    Min = 30, Max = 600, Default = Hub.Flags.AimRadius,
-    Callback = function(val) Hub.Flags.AimRadius = val end
-})
-tabTroll:AddToggle({
-    Name = "Раздуть Хитбоксы Врагов",
-    Description = "Создает кликабельные Root-боксы",
-    Default = Hub.Flags.CustomBoxes,
-    Callback = function(state) Hub.Flags.CustomBoxes = state end
-})
-tabTroll:AddSlider({
-    Name = "Размер Хитбокса цели",
-    Min = 2, Max = 30, Default = Hub.Flags.BoxSize,
-    Callback = function(val) Hub.Flags.BoxSize = val end
-})
-tabTroll:AddToggle({
-    Name = "Бросок под карту (Клавиша Х)",
-    Description = "Ломает коллизию и швыряет цель вниз",
-    Default = Hub.Flags.AutoUnderMap,
-    Callback = function(state) Hub.Flags.AutoUnderMap = state end
-})
-
 tabTroll:AddSection("Контроль Жертвы")
-tabTroll:AddTextBox({ Name = "Имя Жертвы (Ник)", Placeholder = "Имя...", Default = Hub.Flags.TargetPlayer, Callback = function(text) Hub.Flags.TargetPlayer = text end })
+
+tabTroll:AddTextBox({
+    Name = "Имя Жертвы (Ник)",
+    Placeholder = "Имя...",
+    Default = Hub.Flags.TargetPlayer,
+    Callback = function(text)
+        Hub.Flags.TargetPlayer = text
+    end
+})
+
 tabTroll:AddButton({
     Name = "Fling Target (Разорвать цель)",
     Callback = function()
         local target = FindPlayerByName(Hub.Flags.TargetPlayer)
-        if target then ExecuteFling(target)
-        else StarterGui:SetCore("SendNotification", { Title = "Ошибка", Text = "Целевой игрок не найден!", Duration = 3 }) end
+        if target then
+            ExecuteFling(target)
+        else
+            StarterGui:SetCore("SendNotification", {
+                Title = "Ошибка",
+                Text = "Целевой игрок не найден в лобби!",
+                Duration = 3
+            })
+        end
     end
 })
-tabTroll:AddToggle({ Name = "Orbit Target (Орбита)", Description = "Режим вращения вокруг цели", Default = Hub.Flags.OrbitPlayer, Callback = function(state) Hub.Flags.OrbitPlayer = state end })
-tabTroll:AddSlider({ Name = "Дистанция орбиты", Min = 2, Max = 60, Default = Hub.Flags.OrbitDistance, Callback = function(val) Hub.Flags.OrbitDistance = val end })
-tabTroll:AddSlider({ Name = "Скорость орбиты", Min = 1, Max = 40, Default = Hub.Flags.OrbitSpeed, Callback = function(val) Hub.Flags.OrbitSpeed = val end })
+
+tabTroll:AddToggle({
+    Name = "Orbit Target (Запуск орбиты)",
+    Description = "Режим вращения вокруг цели",
+    Default = Hub.Flags.OrbitPlayer,
+    Callback = function(state)
+        Hub.Flags.OrbitPlayer = state
+    end
+})
+
+tabTroll:AddSlider({
+    Name = "Дистанция орбиты",
+    Min = 2,
+    Max = 60,
+    Default = Hub.Flags.OrbitDistance,
+    Callback = function(val)
+        Hub.Flags.OrbitDistance = val
+    end
+})
+
+tabTroll:AddSlider({
+    Name = "Скорость орбиты",
+    Min = 1,
+    Max = 40,
+    Default = Hub.Flags.OrbitSpeed,
+    Callback = function(val)
+        Hub.Flags.OrbitSpeed = val
+    end
+})
 
 tabTroll:AddSection("Глобальный Хаос")
-tabTroll:AddToggle({ Name = "Fling Aura (Аура смерти)", Description = "Авто-флинг любого в радиусе 15 единиц", Default = Hub.Flags.FlingAura, Callback = function(state) Hub.Flags.FlingAura = state end })
-tabTroll:AddToggle({ Name = "Click Fling (+Ctrl)", Description = "Зажмите левый Ctrl и кликните на игрока", Default = Hub.Flags.ClickFling, Callback = function(state) Hub.Flags.ClickFling = state end })
-tabTroll:AddButton({ Name = "Fling All (Флинг всех)", Callback = function() for _, p in ipairs(Players:GetPlayers()) do if p ~= lp then task.spawn(function() ExecuteFling(p) end) end end end })
-tabTroll:AddButton({ Name = "Mass Weld (Связка физики)", Callback = function() RunMassWeld() end })
-tabTroll:AddToggle({ Name = "Lobby Freeze (Загрузка пакетами)", Description = "Шторм пакетами позиционирования", Default = Hub.Flags.LobbyFreeze, Callback = function(state) Hub.Flags.LobbyFreeze = state end })
+
+tabTroll:AddToggle({
+    Name = "Fling Aura (Аура смерти)",
+    Description = "Авто-флинг любого игрока, зашедшего в вашу зону",
+    Default = Hub.Flags.FlingAura,
+    Callback = function(state)
+        Hub.Flags.FlingAura = state
+    end
+})
+
+tabTroll:AddToggle({
+    Name = "Click Fling (+Ctrl)",
+    Description = "Зажмите левый Ctrl и кликните на игрока для флинга",
+    Default = Hub.Flags.ClickFling,
+    Callback = function(state)
+        Hub.Flags.ClickFling = state
+    end
+})
+
+tabTroll:AddButton({
+    Name = "Fling All (Флинг всех игроков)",
+    Callback = function()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp then
+                task.spawn(function() ExecuteFling(p) end)
+            end
+        end
+    end
+})
+
+tabTroll:AddButton({
+    Name = "Mass Weld (Глобальная связка физики)",
+    Callback = function()
+        RunMassWeld()
+    end
+})
+
+tabTroll:AddToggle({
+    Name = "Lobby Freeze (Загрузка сервера)",
+    Description = "Шторм пакетами позиционирования для задержки физики",
+    Default = Hub.Flags.LobbyFreeze,
+    Callback = function(state)
+        Hub.Flags.LobbyFreeze = state
+    end
+})
 
 
--- --- ВКЛАДКА: ВИЗУАЛЫ ---
+-- Вкладка: ВИЗУАЛЫ
 local tabVisuals = menu:CreateTab("Визуалы")
 tabVisuals:AddSection("Отображение ESP")
-tabVisuals:AddToggle({ Name = "ESP Боксы", Default = Hub.Flags.ESP_Boxes, Callback = function(state) Hub.Flags.ESP_Boxes = state end })
-tabVisuals:AddToggle({ Name = "ESP Трассеры", Default = Hub.Flags.ESP_Tracers, Callback = function(state) Hub.Flags.ESP_Tracers = state end })
-tabVisuals:AddToggle({ Name = "ESP Имена", Default = Hub.Flags.ESP_Names, Callback = function(state) Hub.Flags.ESP_Names = state end })
-tabVisuals:AddToggle({ Name = "ESP Здоровье", Default = Hub.Flags.ESP_Health, Callback = function(state) Hub.Flags.ESP_Health = state end })
 
-tabVisuals:AddSection("Камера и FOV (Новые исправления)")
-tabVisuals:AddToggle({ Name = "Вид от 3-го лица", Description = "Обход блокировок камеры игрой", Default = Hub.Flags.ThirdPerson, Callback = function(state) Hub.Flags.ThirdPerson = state end })
-tabVisuals:AddSlider({ Name = "Дистанция 3-го лица", Min = 5, Max = 100, Default = Hub.Flags.CamDist, Callback = function(val) Hub.Flags.CamDist = val end })
-tabVisuals:AddToggle({ Name = "Растяг Экрана (FOV)", Description = "Стабильное изменение угла обзора", Default = Hub.Flags.StretchToggle, Callback = function(state) Hub.Flags.StretchToggle = state end })
-tabVisuals:AddSlider({ Name = "Значение FOV", Min = 30, Max = 150, Default = Hub.Flags.Stretch, Callback = function(val) Hub.Flags.Stretch = val end })
+tabVisuals:AddToggle({
+    Name = "ESP Боксы",
+    Description = "Квадратные рамки вокруг тел игроков",
+    Default = Hub.Flags.ESP_Boxes,
+    Callback = function(state)
+        Hub.Flags.ESP_Boxes = state
+    end
+})
+
+tabVisuals:AddToggle({
+    Name = "ESP Трассеры",
+    Description = "Линии наведения от центра экрана к целям",
+    Default = Hub.Flags.ESP_Tracers,
+    Callback = function(state)
+        Hub.Flags.ESP_Tracers = state
+    end
+})
+
+tabVisuals:AddToggle({
+    Name = "ESP Имена",
+    Description = "Отображает дисплей-неймы и юзернеймы над целями",
+    Default = Hub.Flags.ESP_Names,
+    Callback = function(state)
+        Hub.Flags.ESP_Names = state
+    end
+})
+
+tabVisuals:AddToggle({
+    Name = "ESP Полоска здоровья",
+    Description = "Шкала ХП слева от бокса игрока",
+    Default = Hub.Flags.ESP_Health,
+    Callback = function(state)
+        Hub.Flags.ESP_Health = state
+    end
+})
 
 tabVisuals:AddSection("Окружающая Среда")
+
 tabVisuals:AddToggle({
-    Name = "Режим Fullbright (День)", Default = Hub.Flags.Fullbright,
+    Name = "Режим Fullbright (День)",
+    Description = "Максимально яркое освещение карты без ночи",
+    Default = Hub.Flags.Fullbright,
     Callback = function(state)
         Hub.Flags.Fullbright = state
         if not state then
@@ -1044,135 +1872,165 @@ tabVisuals:AddToggle({
             Lighting.OutdoorAmbient = Hub.Cache.OriginalLighting.OutdoorAmbient
             Lighting.Brightness = Hub.Cache.OriginalLighting.Brightness
             Lighting.ClockTime = Hub.Cache.OriginalLighting.ClockTime
-        else
-            Lighting.Ambient = Color3.fromRGB(255,255,255)
-            Lighting.Brightness = 3
-            Lighting.ClockTime = 14
         end
     end
 })
-tabVisuals:AddToggle({ Name = "Potato PC Mode (Оптимизация)", Default = Hub.Flags.PotatoPC, Callback = function(state) ApplyPotatoPC(state) end })
+
+tabVisuals:AddToggle({
+    Name = "Potato PC Mode (Оптимизация)",
+    Description = "Убирает тяжелые текстуры и материалы для буста FPS",
+    Default = Hub.Flags.PotatoPC,
+    Callback = function(state)
+        ApplyPotatoPC(state)
+    end
+})
 
 
--- --- ВКЛАДКА: ЗАЩИТА & СПАМ ---
+-- Вкладка: ЗАЩИТА & СПАМ
 local tabDefense = menu:CreateTab("Защита")
 tabDefense:AddSection("Мета-Механика")
-tabDefense:AddToggle({ Name = "Bypass Metatable (Обход)", Default = Hub.Flags.BypassMetatable, Callback = function(state) Hub.Flags.BypassMetatable = state end })
-tabDefense:AddToggle({ Name = "Anti-Grab (Защита персонажа)", Default = Hub.Flags.AntiGrab, Callback = function(state) Hub.Flags.AntiGrab = state end })
-tabDefense:AddToggle({ Name = "Anti-Fling (Анти-Раскрутка)", Description = "Жесткая фиксация угловой скорости", Default = Hub.Flags.AntiFling, Callback = function(state) Hub.Flags.AntiFling = state end })
+
+tabDefense:AddToggle({
+    Name = "Bypass Metatable (Обход защиты)",
+    Description = "Препятствует обнаружению кастомной скорости сервером",
+    Default = Hub.Flags.BypassMetatable,
+    Callback = function(state)
+        Hub.Flags.BypassMetatable = state
+    end
+})
+
+tabDefense:AddToggle({
+    Name = "Anti-Grab (Защита от захвата)",
+    Description = "Защищает персонажа от попыток унести его",
+    Default = Hub.Flags.AntiGrab,
+    Callback = function(state)
+        Hub.Flags.AntiGrab = state
+    end
+})
+
+tabDefense:AddToggle({
+    Name = "Anti-Fling (Анти-Раскрутка)",
+    Description = "Ограничивает падение и вращение при сторонних таранах",
+    Default = Hub.Flags.AntiFling,
+    Callback = function(state)
+        Hub.Flags.AntiFling = state
+    end
+})
 
 tabDefense:AddSection("Автоматизация")
-tabDefense:AddToggle({ Name = "Спамер в глобальный чат", Default = Hub.Flags.ChatSpam, Callback = function(state) Hub.Flags.ChatSpam = state end })
-tabDefense:AddTextBox({ Name = "Текст сообщения", Placeholder = "Текст...", Default = Hub.Flags.ChatSpamMessage, Callback = function(text) Hub.Flags.ChatSpamMessage = text end })
+
+tabDefense:AddToggle({
+    Name = "Спамер в глобальный чат",
+    Description = "Автоматическая рассылка заданного сообщения в лобби",
+    Default = Hub.Flags.ChatSpam,
+    Callback = function(state)
+        Hub.Flags.ChatSpam = state
+    end
+})
+
+tabDefense:AddTextBox({
+    Name = "Текст сообщения",
+    Placeholder = "Пиши тут...",
+    Default = Hub.Flags.ChatSpamMessage,
+    Callback = function(text)
+        Hub.Flags.ChatSpamMessage = text
+    end
+})
 
 
--- --- ВКЛАДКА: ПРОФИЛЬ (ПОЛНОРАЗМЕРНАЯ КАРТОЧКА С АВАТАРОМ) ---
+-- ============================================================================
+-- [6. ЭЛИТНАЯ КАРТОЧКА ПРОФИЛЯ]
+-- ============================================================================
 local tabProfile = menu:CreateTab("Профиль")
 tabProfile:AddSection("Личная Сводка Данных")
-
-local profileCard = Instance.new("Frame")
-profileCard.Size = UDim2.new(0.95, 0, 0, 290); profileCard.BackgroundColor3 = THEME.BgStrong; profileCard.Parent = tabProfile.Page
-local pCor = Instance.new("UICorner"); pCor.CornerRadius = UDim.new(0, 14); pCor.Parent = profileCard
-local pStroke = Instance.new("UIStroke"); pStroke.Color = Color3.fromRGB(35, 38, 50); pStroke.Thickness = 1.5; pStroke.Parent = profileCard
-
-local avatarImage = Instance.new("ImageLabel")
-avatarImage.Size = UDim2.new(0, 100, 0, 100); avatarImage.Position = UDim2.new(0.5, -50, 0, 18); avatarImage.BackgroundColor3 = THEME.Bg; avatarImage.Image = "rbxasset://textures/ui/Guideline.png"; avatarImage.Parent = profileCard
-local aCor = Instance.new("UICorner"); aCor.CornerRadius = UDim.new(1, 0); aCor.Parent = avatarImage
-local aStroke = Instance.new("UIStroke"); aStroke.Color = THEME.Accent; aStroke.Thickness = 2.5; aStroke.Parent = avatarImage
-
-local nameLabel = Instance.new("TextLabel")
-nameLabel.Size = UDim2.new(1, -24, 0, 26); nameLabel.Position = UDim2.new(0, 12, 0, 125); nameLabel.Text = lp.DisplayName .. " (@" .. lp.Name .. ")"; nameLabel.TextColor3 = THEME.Text; nameLabel.Font = Enum.Font.SourceSansBold; nameLabel.TextSize = 18; nameLabel.TextAlignment = Enum.TextAlignment.Center; nameLabel.BackgroundTransparency = 1; nameLabel.Parent = profileCard
-
-local ageLabel = Instance.new("TextLabel")
-ageLabel.Size = UDim2.new(1, -24, 0, 20); ageLabel.Position = UDim2.new(0, 12, 0, 155); ageLabel.Text = "Возраст профиля: " .. tostring(lp.AccountAge) .. " дней"; ageLabel.TextColor3 = THEME.TextDim; ageLabel.Font = Enum.Font.SourceSansSemibold; ageLabel.TextSize = 14; ageLabel.TextAlignment = Enum.TextAlignment.Center; ageLabel.BackgroundTransparency = 1; ageLabel.Parent = profileCard
-
-local friendsLabel = Instance.new("TextLabel")
-friendsLabel.Size = UDim2.new(1, -24, 0, 20); friendsLabel.Position = UDim2.new(0, 12, 0, 178); friendsLabel.Text = "Друзей на текущем сервере: сканирование..."; friendsLabel.TextColor3 = THEME.TextDim; friendsLabel.Font = Enum.Font.SourceSansSemibold; friendsLabel.TextSize = 14; friendsLabel.TextAlignment = Enum.TextAlignment.Center; friendsLabel.BackgroundTransparency = 1; friendsLabel.Parent = profileCard
-
-local statsLabel = Instance.new("TextLabel")
-statsLabel.Size = UDim2.new(1, -24, 0, 20); statsLabel.Position = UDim2.new(0, 12, 0, 201); statsLabel.Text = "Пинг: Вычисление... | FPS: Вычисление..."; statsLabel.TextColor3 = THEME.AccentGlow; statsLabel.Font = Enum.Font.SourceSansBold; statsLabel.TextSize = 13; statsLabel.TextAlignment = Enum.TextAlignment.Center; statsLabel.BackgroundTransparency = 1; statsLabel.Parent = profileCard
-
-local placeLabel = Instance.new("TextLabel")
-placeLabel.Size = UDim2.new(1, -24, 0, 20); placeLabel.Position = UDim2.new(0, 12, 0, 224); placeLabel.Text = "ID Сервера: " .. tostring(game.JobId:sub(1,16)) .. "... | PlaceID: " .. tostring(game.PlaceId); placeLabel.TextColor3 = THEME.TextDim; placeLabel.Font = Enum.Font.SourceSans; placeLabel.TextSize = 12; placeLabel.TextAlignment = Enum.TextAlignment.Center; placeLabel.BackgroundTransparency = 1; placeLabel.Parent = profileCard
-
-task.spawn(function()
-    local pcon, ready = Players:GetUserThumbnailAsync(lp.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
-    if ready then avatarImage.Image = pcon end
-end)
-
-local function RecalculateFriends()
-    local counter = 0
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= lp then
-            local success, areFriends = pcall(function() return lp:IsFriendsWith(player.UserId) end)
-            if success and areFriends then counter = counter + 1 end
-        end
-    end
-    friendsLabel.Text = "Друзей на текущем сервере: " .. tostring(counter)
-end
-task.spawn(RecalculateFriends)
-SafeConnect(Players.PlayerAdded, RecalculateFriends)
-SafeConnect(Players.PlayerRemoving, RecalculateFriends)
-
-local fpsCounter = 0
-SafeConnect(RunService.Heartbeat, function(step) fpsCounter = math.floor(1 / step) end)
-task.spawn(function()
-    while task.wait(1) do
-        if Hub.Loaded then
-            pcall(function()
-                local pingValue = math.floor(Stats.Network.ServerToClientPing:GetValue() * 1000)
-                statsLabel.Text = "Пинг: " .. tostring(pingValue) .. " ms | FPS: " .. tostring(fpsCounter)
-            end)
-        end
-    end
-end)
+tabProfile:AddProfileCard()
 
 
--- --- ВКЛАДКА: НАСТРОЙКИ ЯДРА & ВЫГРУЗКА ---
+-- Вкладка: НАСТРОЙКИ ЯДРА & ВЫГРУЗКА
 local tabCore = menu:CreateTab("Настройки")
 tabCore:AddSection("Конфигурация Ядра")
-tabCore:AddButton({ Name = "Перепривязать Metatable Bypass", Callback = function() StarterGui:SetCore("SendNotification", { Title = "Мета-Связь", Text = "Metatable Bypass переподключен!", Duration = 3 }) end })
+
+tabCore:AddButton({
+    Name = "Перепривязать Metatable Bypass",
+    Callback = function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "Мета-Связь",
+            Text = "Metatable Bypass успешно переподключен к Lua State!",
+            Duration = 3
+        })
+    end
+})
 
 tabCore:AddSection("Удаление Скрипта")
+
+-- Функция полной деструкции монолита
 local function TerminateHub()
     Hub.Loaded = false
-    RunService:UnbindFromRenderStep("BrosaCameraControl")
-    fovCircle:Destroy()
     
-    for _, conn in ipairs(Hub.Cache.Connections) do if conn.Connected then conn:Disconnect() end end
+    -- Отключение всех ивентов
+    for _, conn in ipairs(Hub.Cache.Connections) do
+        if conn.Connected then conn:Disconnect() end
+    end
     table.clear(Hub.Cache.Connections)
     
+    -- Возврат света
     Lighting.Ambient = Hub.Cache.OriginalLighting.Ambient
     Lighting.OutdoorAmbient = Hub.Cache.OriginalLighting.OutdoorAmbient
     Lighting.Brightness = Hub.Cache.OriginalLighting.Brightness
     Lighting.ClockTime = Hub.Cache.OriginalLighting.ClockTime
+    Lighting.FogEnd = Hub.Cache.OriginalLighting.FogEnd
+    Lighting.GlobalShadows = Hub.Cache.OriginalLighting.GlobalShadows
     
+    -- Очистка 2D ESP чертежей
     for _, item in pairs(Hub.Cache.EspBoxes) do item:Destroy() end
     for _, item in pairs(Hub.Cache.EspTracers) do item:Destroy() end
     for _, item in pairs(Hub.Cache.EspNames) do item:Destroy() end
     for _, item in pairs(Hub.Cache.EspHealth) do item:Destroy() end
-    for id, box in pairs(Hub.Cache.Hitboxes) do if box then box:Destroy() end end
     
-    if menu.Screen then menu.Screen:Destroy() end
+    table.clear(Hub.Cache.EspBoxes)
+    table.clear(Hub.Cache.EspTracers)
+    table.clear(Hub.Cache.EspNames)
+    table.clear(Hub.Cache.EspHealth)
+
+    fovCircle:Destroy()
+    snapLine:Destroy()
     
-    for obj, data in pairs(Hub.Cache.OriginalMaterials) do if obj and obj.Parent then obj.Material = data[1] obj.Reflectance = data[2] end end
+    -- Деструкция GUI
+    if menu.Gui then menu.Gui:Destroy() end
+    
+    -- Возвращение текстур Potato PC на исходные
+    for obj, data in pairs(Hub.Cache.OriginalMaterials) do
+        if obj and obj.Parent then
+            obj.Material = data[1]
+            obj.Reflectance = data[2]
+        end
+    end
     
     pcall(function()
         local hum = lp.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum.PlatformStand = false; hum.WalkSpeed = 16; hum.JumpPower = 50 end
-        camera.CameraType = Enum.CameraType.Custom
+        if hum then 
+            hum.PlatformStand = false
+            hum.WalkSpeed = 16
+            hum.JumpPower = 50
+        end
     end)
     
     _G.BrosaHubGlobal = nil
     print("[Brosa System]: Скрипт полностью выгружен, все хуки и GUI зачищены.")
 end
 
-tabCore:AddButton({ Name = "Destroy Script (Выгрузить)", Callback = function() TerminateHub() end })
+tabCore:AddButton({
+    Name = "Destroy Script (Выгрузить полностью)",
+    Callback = function()
+        TerminateHub()
+    end
+})
 
 -- ============================================================================
 -- [7. ОБРАБОТЧИКИ СОБЫТИЙ И ЖИЗНЕННЫЙ ЦИКЛ ПЕРСОНАЖА]
 -- ============================================================================
 
+-- Обход метатаблицы
 local rawMetatable = getrawmetatable(game)
 local oldIndex = rawMetatable.__index
 local oldNewIndex = rawMetatable.__newindex
@@ -1199,13 +2057,18 @@ rawMetatable.__newindex = newcclosure(function(self, index, val)
 end)
 setreadonly(rawMetatable, true)
 
+-- Авто-накат параметров при спавне
 SafeConnect(lp.CharacterAdded, function(char)
     local hum = char:WaitForChild("Humanoid", 15)
     if hum then
         task.wait(0.6)
-        if Hub.Flags.WalkSpeedEnabled then hum.WalkSpeed = Hub.Flags.WalkSpeedValue end
-        if Hub.Flags.JumpPowerEnabled then hum.JumpPower = Hub.Flags.JumpPowerValue end
+        if Hub.Flags.WalkSpeedEnabled then
+            hum.WalkSpeed = Hub.Flags.WalkSpeedValue
+        end
+        if Hub.Flags.JumpPowerEnabled then
+            hum.JumpPower = Hub.Flags.JumpPowerValue
+        end
     end
 end)
 
-print("[Brosa System v5.5]: Монолит успешно обновлен! Все старые функции сохранены, боевой движок и физика стабилизированы.")
+print("[Brosa System v5.5]: Монолитный скрипт успешно загружен! Новое меню Aurora V2 и функционал бесконтактного захвата инициализированы.")
