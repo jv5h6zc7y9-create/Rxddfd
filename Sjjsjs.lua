@@ -1,16 +1,24 @@
 -- ==========================================
---               НАСТРОЙКИ ПО УМОЛЧАНИЮ
+--               НАСТРОЙКИ ХАБА
 -- ==========================================
 local Settings = {
     SilentGrab = {
         Enabled = true,
-        Radius = 150,
-        Color = Color3.fromRGB(0, 255, 150),
-        TargetPart = "HumanoidRootPart"
+        Radius = 180,                         -- Радиус круга аима в пикселях
+        Color = Color3.fromRGB(255, 0, 100),   -- Цвет круга (Розовый)
+    },
+    ESP = {
+        Enabled = true,                        -- ВХ (Подсветка игроков через стены)
+        Boxes = true,                          -- Квадраты вокруг игроков
+        Names = true,                          -- Никнеймы игроков
+        Color = Color3.fromRGB(0, 255, 255)    -- Цвет подсветки ВХ (Голубой)
+    },
+    SuperFling = {
+        Enabled = true,
+        Power = 600                            -- Сила броска за карту
     },
     AntiGrab = {
-        Enabled = true,
-        Method = "DestroyWeld" -- "DestroyWeld" или "AutoSpace"
+        Enabled = true                         -- Защита от чужих рук
     }
 }
 
@@ -22,9 +30,8 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 
--- Создание визуального круга FOV (Строго по центру)
+-- Создание визуального круга Аима строго по центру
 local FOV_Circle = Drawing.new("Circle")
 FOV_Circle.Thickness = 2
 FOV_Circle.NumSides = 60
@@ -32,10 +39,8 @@ FOV_Circle.Filled = false
 FOV_Circle.Color = Settings.SilentGrab.Color
 FOV_Circle.Visible = Settings.SilentGrab.Enabled
 
--- Обновление круга строго по центру экрана каждый кадр
 RunService.RenderStepped:Connect(function()
     if Settings.SilentGrab.Enabled then
-        -- Получаем центр экрана динамически
         local screenSize = Camera.ViewportSize
         FOV_Circle.Position = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
         FOV_Circle.Radius = Settings.SilentGrab.Radius
@@ -46,29 +51,25 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ==========================================
---    ЛОГИКА СХВАТЫВАНИЯ ИЗ ЦЕНТРА ЭКРАНА
+--    ЛОГИКА АИМА (ПОИСК ЦЕЛИ В КРУГЕ)
 -- ==========================================
-local function getClosestPlayerToCenter()
+local function getTargetInCenter()
     if not Settings.SilentGrab.Enabled then return nil end
-    
     local closestTarget = nil
     local shortestDistance = Settings.SilentGrab.Radius
     local screenSize = Camera.ViewportSize
     local screenCenter = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(Settings.SilentGrab.TargetPart) then
-            local part = player.Character[Settings.SilentGrab.TargetPart]
-            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local root = player.Character.HumanoidRootPart
+            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
             
             if onScreen then
-                local playerScreenPos = Vector2.new(pos.X, pos.Y)
-                -- Считаем расстояние от ЦЕНТРА экрана до игрока
-                local distance = (screenCenter - playerScreenPos).Magnitude
-
+                local distance = (screenCenter - Vector2.new(pos.X, pos.Y)).Magnitude
                 if distance < shortestDistance then
                     shortestDistance = distance
-                    closestTarget = part
+                    closestTarget = player.Character
                 end
             end
         end
@@ -76,204 +77,124 @@ local function getClosestPlayerToCenter()
     return closestTarget
 end
 
--- Перехват метатаблицы мыши
-local gmt = getrawmetatable(game)
-setreadonly(gmt, false)
-local oldIndex = gmt.__index
-
-gmt.__index = newcclosure(function(self, key)
-    if self == LocalPlayer:GetMouse() and (key == "Hit" or key == "Target") then
-        local target = getClosestPlayerToCenter()
-        if target then
-            if key == "Hit" then return target.CFrame end
-            if key == "Target" then return target end
-        end
-    end
-    return oldIndex(self, key)
-end)
-setreadonly(gmt, true)
-
 -- ==========================================
---          ЛОГИКА ANTI-GRAB (ЗАЩИТА)
+--   РАБОТА АИМА, ЗАХВАТА И СУПЕР-БРОСКА
 -- ==========================================
-local function cleanGrabAttachments(character)
-    if not character then return end
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("Weld") or part:IsA("ManualWeld") or part:IsA("WeldConstraint") then
-            if part.Part0 and part.Part1 then
-                local p0Owner = Players:GetPlayerFromCharacter(part.Part0.Parent)
-                local p1Owner = Players:GetPlayerFromCharacter(part.Part1.Parent)
-                if (p0Owner and p0Owner ~= LocalPlayer) or (p1Owner and p1Owner ~= LocalPlayer) then
-                    part:Destroy()
-                end
+local currentGrabbedCharacter = nil
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- Клик мыши или тач на экране активирует захват цели в круге аима
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local targetCharacter = getTargetInCenter()
+        
+        if targetCharacter and not currentGrabbedCharacter then
+            -- МГНОВЕННЫЙ ЗАХВАТ (АИМ МАГНИТ): Телепортирует цель из круга к твоей руке
+            local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myRoot then
+                currentGrabbedCharacter = targetCharacter
+                targetCharacter.HumanoidRootPart.CFrame = myRoot.CFrame + (myRoot.CFrame.LookVector * 4)
             end
-        end
-        if part:IsA("RopeConstraint") or part:IsA("SpringConstraint") or part:IsA("RodConstraint") then
-            part:Destroy()
+        elseif currentGrabbedCharacter then
+            -- ДАЛЁКИЙ БРОСОК (СУПЕР ФЛИНГ): Второй клик запускает цель в космос по направлению камеры
+            local targetRoot = currentGrabbedCharacter:FindFirstChild("HumanoidRootPart")
+            if targetRoot then
+                local throwDirection = Camera.CFrame.LookVector
+                targetRoot.Velocity = (throwDirection * Settings.SuperFling.Power) + Vector3.new(0, Settings.SuperFling.Power / 2, 0)
+                targetRoot.RotVelocity = Vector3.new(math.random(-120, 120), math.random(-120, 120), math.random(-120, 120))
+            end
+            currentGrabbedCharacter = nil
         end
     end
-end
+end)
 
-local isSpamming = false
-local function autoSpaceEscape()
-    if isSpamming then return end
-    isSpamming = true
-    for i = 1, 8 do
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-        task.wait(0.01)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+-- Фиксация цели перед собой во время удержания
+RunService.Heartbeat:Connect(function()
+    if currentGrabbedCharacter and currentGrabbedCharacter:FindFirstChild("HumanoidRootPart") then
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if myRoot then
+            currentGrabbedCharacter.HumanoidRootPart.CFrame = myRoot.CFrame + (myRoot.CFrame.LookVector * 5)
+            currentGrabbedCharacter.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+        else
+            currentGrabbedCharacter = nil
+        end
     end
-    isSpamming = false
+end)
+
+-- ==========================================
+--         ЛОГИКА ВХ (ESP / ПОДСВЕТКА)
+-- ==========================================
+local function createESP(player)
+    local box = Drawing.new("Square")
+    box.Thickness = 1
+    box.Filled = false
+    box.Color = Settings.ESP.Color
+    box.Visible = false
+
+    local nameLabel = Drawing.new("Text")
+    nameLabel.Text = player.Name
+    nameLabel.Size = 14
+    nameLabel.Center = true
+    nameLabel.Outline = true
+    nameLabel.Color = Color3.fromRGB(255, 255, 255)
+    nameLabel.Visible = false
+
+    local conn
+    conn = RunService.RenderStepped:Connect(function()
+        if not Settings.ESP.Enabled or not player.Parent or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+            box.Visible = false
+            nameLabel.Visible = false
+            if not player.Parent then conn:Disconnect() box:Remove() nameLabel:Remove() end
+            return
+        end
+
+        local root = player.Character.HumanoidRootPart
+        local head = player.Character:FindFirstChild("Head")
+        if not head then return end
+
+        local rootPos, rootOnScreen = Camera:WorldToViewportPoint(root.Position)
+        local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+        local legPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+
+        if rootOnScreen then
+            -- Расчет размеров квадрата ВХ
+            local height = math.abs(headPos.Y - legPos.Y)
+            local width = height / 1.5
+
+            if Settings.ESP.Boxes then
+                box.Size = Vector2.new(width, height)
+                box.Position = Vector2.new(rootPos.X - width / 2, rootPos.Y - height / 2)
+                box.Visible = true
+            else
+                box.Visible = false
+            end
+
+            if Settings.ESP.Names then
+                nameLabel.Position = Vector2.new(rootPos.X, rootPos.Y - height / 2 - 15)
+                nameLabel.Visible = true
+            else
+                nameLabel.Visible = false
+            end
+        else
+            box.Visible = false
+            nameLabel.Visible = false
+        end
+    end)
 end
 
+-- Авто-подключение ВХ ко всем игрокам
+for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then createESP(p) end end
+Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then createESP(p) end end)
+
+-- ==========================================
+--                ANTI-GRAB
+-- ==========================================
 RunService.Heartbeat:Connect(function()
     if not Settings.AntiGrab.Enabled or not LocalPlayer.Character then return end
-    if Settings.AntiGrab.Method == "DestroyWeld" then
-        cleanGrabAttachments(LocalPlayer.Character)
-    elseif Settings.AntiGrab.Method == "AutoSpace" then
-        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if humanoid and (humanoid:GetState() == Enum.HumanoidStateType.Physics or humanoid:GetState() == Enum.HumanoidStateType.Ragdoll) then
-            task.spawn(autoSpaceEscape)
+    for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+        if part:IsA("Weld") or part:IsA("ManualWeld") or part:IsA("WeldConstraint") or part:IsA("RopeConstraint") then
+            part:Destroy()
         end
-    end
-end)
-
--- ==========================================
---         СОЗДАНИЕ UI МЕНЮ (GUI)
--- ==========================================
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FTAP_MenuGui"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
--- Главный фрейм меню
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 250, 0, 300)
-MainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true -- Меню можно перетаскивать пальцем/мышкой
-MainFrame.Parent = ScreenGui
-
--- Скругление углов
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = MainFrame
-
--- Заголовок меню
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.Text = "FTAP Проводник (Клавиша: K)"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 16
-Title.Font = Enum.Font.SourceSansBold
-Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-Title.Parent = MainFrame
-local TitleCorner = Instance.new("UICorner") TitleCorner.CornerRadius = UDim.new(0, 10) TitleCorner.Parent = Title
-
--- Список элементов меню
-local UIListLayout = Instance.new("UIListLayout")
-UIListLayout.Padding = UDim.new(0, 10)
-UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-local Container = Instance.new("Frame")
-Container.Size = UDim2.new(1, 0, 1, -50)
-Container.Position = UDim2.new(0, 0, 0, 50)
-Container.BackgroundTransparency = 1
-Container.Parent = MainFrame
-UIListLayout.Parent = Container
-
--- Функция для создания красивых кнопок-переключателей
-local function createToggleButton(text, defaultState, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 220, 0, 40)
-    btn.Font = Enum.Font.SourceSans
-    btn.TextSize = 16
-    btn.BorderSizePixel = 0
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = btn
-
-    local function updateVisuals(state)
-        if state then
-            btn.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
-            btn.Text = text .. ": ВКЛ"
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        else
-            btn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-            btn.Text = text .. ": ВЫКЛ"
-            btn.TextColor3 = Color3.fromRGB(240, 240, 240)
-        end
-    end
-
-    local state = defaultState
-    updateVisuals(state)
-
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        updateVisuals(state)
-        callback(state)
-    end)
-
-    btn.Parent = Container
-end
-
--- Кнопка 1: Silent Grab
-createToggleButton("Silent Grab (Центр)", Settings.SilentGrab.Enabled, function(state)
-    Settings.SilentGrab.Enabled = state
-end)
-
--- Кнопка 2: Настройка радиуса (Циклическое изменение)
-local RadiusBtn = Instance.new("TextButton")
-RadiusBtn.Size = UDim2.new(0, 220, 0, 40)
-RadiusBtn.BackgroundColor3 = Color3.fromRGB(50, 60, 75)
-RadiusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-RadiusBtn.Font = Enum.Font.SourceSans
-RadiusBtn.TextSize = 16
-RadiusBtn.Text = "Радиус FOV: " .. Settings.SilentGrab.Radius
-RadiusBtn.Parent = Container
-local RCorner = Instance.new("UICorner") RCorner.CornerRadius = UDim.new(0, 6) RCorner.Parent = RadiusBtn
-
-RadiusBtn.MouseButton1Click:Connect(function()
-    if Settings.SilentGrab.Radius == 100 then Settings.SilentGrab.Radius = 150
-    elseif Settings.SilentGrab.Radius == 150 then Settings.SilentGrab.Radius = 220
-    elseif Settings.SilentGrab.Radius == 220 then Settings.SilentGrab.Radius = 300
-    else Settings.SilentGrab.Radius = 100 end
-    RadiusBtn.Text = "Радиус FOV: " .. Settings.SilentGrab.Radius
-end)
-
--- Кнопка 3: Anti-Grab
-createToggleButton("Anti-Grab", Settings.AntiGrab.Enabled, function(state)
-    Settings.AntiGrab.Enabled = state
-end)
-
--- Кнопка 4: Метод защиты (Мгновенный сброс или Авто-пробел)
-local MethodBtn = Instance.new("TextButton")
-MethodBtn.Size = UDim2.new(0, 220, 0, 40)
-MethodBtn.BackgroundColor3 = Color3.fromRGB(50, 60, 75)
-MethodBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-MethodBtn.Font = Enum.Font.SourceSans
-MethodBtn.TextSize = 16
-MethodBtn.Text = "Обход: " .. (Settings.AntiGrab.Method == "DestroyWeld" and "Мгновенный" or "Легитный")
-MethodBtn.Parent = Container
-local MCorner = Instance.new("UICorner") MCorner.CornerRadius = UDim.new(0, 6) MCorner.Parent = MethodBtn
-
-MethodBtn.MouseButton1Click:Connect(function()
-    if Settings.AntiGrab.Method == "DestroyWeld" then
-        Settings.AntiGrab.Method = "AutoSpace"
-        MethodBtn.Text = "Обход: Легитный (Space)"
-    else
-        Settings.AntiGrab.Method = "DestroyWeld"
-        MethodBtn.Text = "Обход: Мгновенный"
-    end
-end)
-
--- Открытие/Закрытие меню на кнопку K
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == Enum.KeyCode.K then
-        MainFrame.Visible = not MainFrame.Visible
     end
 end)
